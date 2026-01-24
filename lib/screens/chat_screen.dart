@@ -129,56 +129,102 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+      backgroundColor: Colors.black,
+      body: SafeArea(
+        child: Column(
           children: [
-            Text('Offline Sohbet: $userName', style: const TextStyle(fontSize: 16)),
-            Text('${endpointMap.length} cihaz bağlı', style: const TextStyle(fontSize: 12)),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 4.0),
+              child: Row(
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back, color: Colors.white),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Offline Sohbet: $userName', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.white)),
+                        Text('${endpointMap.length} cihaz bağlı', style: const TextStyle(fontSize: 12, color: Colors.greenAccent)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(color: Colors.white24),
+            Expanded(
+              child: ListView.builder(
+                padding: const EdgeInsets.all(12),
+                itemCount: messages.length,
+                itemBuilder: (context, index) {
+                  final msg = messages[index];
+                  return Align(
+                    alignment: msg.isMe ? Alignment.centerRight : Alignment.centerLeft,
+                    child: Container(
+                      margin: const EdgeInsets.symmetric(vertical: 4),
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: msg.isMe ? Colors.redAccent : Colors.grey[800],
+                        borderRadius: BorderRadius.circular(15).copyWith(
+                          bottomRight: msg.isMe ? const Radius.circular(0) : const Radius.circular(15),
+                          bottomLeft: msg.isMe ? const Radius.circular(15) : const Radius.circular(0),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: msg.isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            msg.sender,
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white60),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            msg.text,
+                            style: const TextStyle(color: Colors.white),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _textController,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: InputDecoration(
+                        hintText: 'Mesaj yazın...',
+                        hintStyle: const TextStyle(color: Colors.white54),
+                        filled: true,
+                        fillColor: Colors.grey[900],
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(25),
+                          borderSide: BorderSide.none,
+                        ),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  CircleAvatar(
+                    backgroundColor: Colors.redAccent,
+                    child: IconButton(
+                      icon: const Icon(Icons.send, color: Colors.white),
+                      onPressed: sendMessage,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ListView.builder(
-              itemCount: messages.length,
-              itemBuilder: (context, index) {
-                final msg = messages[index];
-                return ListTile(
-                  title: Text(
-                    msg.sender,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: msg.isMe ? Colors.blue : Colors.green),
-                    textAlign: msg.isMe ? TextAlign.right : TextAlign.left,
-                  ),
-                  subtitle: Text(
-                    msg.text,
-                    textAlign: msg.isMe ? TextAlign.right : TextAlign.left,
-                  ),
-                );
-              },
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _textController,
-                    decoration: const InputDecoration(hintText: 'Mesaj yazın...'),
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.send),
-                  onPressed: sendMessage,
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }

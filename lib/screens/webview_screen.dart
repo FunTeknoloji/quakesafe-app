@@ -18,6 +18,7 @@ class _WebViewScreenState extends State<WebViewScreen> {
     _controller = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setBackgroundColor(const Color(0x00000000))
+      ..enableZoom(true)
       ..setNavigationDelegate(
         NavigationDelegate(
           onProgress: (int progress) {
@@ -33,10 +34,10 @@ class _WebViewScreenState extends State<WebViewScreen> {
       )
       ..loadRequest(Uri.parse('https://quakesafe-app.vercel.app/'));
 
-    // Android specific configuration for camera/mic permissions in WebView
+    // Android specific configuration
     if (_controller.platform is AndroidWebViewController) {
-      (_controller.platform as AndroidWebViewController)
-          .setOnPlatformPermissionRequest((request) async {
+      final androidController = _controller.platform as AndroidWebViewController;
+      androidController.setOnPlatformPermissionRequest((request) async {
         await request.grant();
       });
     }
@@ -45,16 +46,9 @@ class _WebViewScreenState extends State<WebViewScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('QuakeSafe Online'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: () => _controller.reload(),
-          ),
-        ],
+      body: SafeArea(
+        child: WebViewWidget(controller: _controller),
       ),
-      body: WebViewWidget(controller: _controller),
     );
   }
 }

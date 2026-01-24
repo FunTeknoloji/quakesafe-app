@@ -3,10 +3,12 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/webview_screen.dart';
 import 'screens/offline_home_screen.dart';
+import 'services/notification_service.dart';
 import 'dart:async';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.init();
   runApp(const QuakeSafeApp());
 }
 
@@ -17,7 +19,10 @@ class QuakeSafeApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'QuakeSafe',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
         primarySwatch: Colors.red,
         useMaterial3: true,
       ),
@@ -68,9 +73,20 @@ class _MainGateState extends State<MainGate> {
   }
 
   Future<void> _updateConnectionStatus(List<ConnectivityResult> result) async {
+    final oldStatus = _connectionStatus;
+    final newStatus = result.isEmpty ? ConnectivityResult.none : result.first;
+
     setState(() {
-      _connectionStatus = result.isEmpty ? ConnectivityResult.none : result.first;
+      _connectionStatus = newStatus;
     });
+
+    if (oldStatus != ConnectivityResult.none && newStatus == ConnectivityResult.none) {
+      NotificationService.showNotification(
+        id: 1,
+        title: 'Çevrimdışı Mod Aktif',
+        body: 'İnternet bağlantısı kesildi. QuakeSafe çevrimdışı moduna geçildi.',
+      );
+    }
   }
 
   Future<void> requestPermissions() async {

@@ -1,4 +1,4 @@
-package com.quakesafe.app.quakesafe_app
+package com.quakesafe.app
 
 import io.flutter.embedding.android.FlutterActivity
 
