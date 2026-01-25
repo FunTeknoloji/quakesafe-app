@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'dart:math' as math;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import '../services/p2p_connection_service.dart';
 
 class ToolsScreen extends StatefulWidget {
   const ToolsScreen({super.key});
@@ -19,6 +20,8 @@ class _ToolsScreenState extends State<ToolsScreen> {
   final AudioPlayer _audioPlayer = AudioPlayer();
   double? _heading = 0;
   List<double>? _accelerometerValues;
+  bool _isLooping = false;
+  String? _currentlyPlaying;
 
   @override
   void initState() {
@@ -56,8 +59,22 @@ class _ToolsScreenState extends State<ToolsScreen> {
 
   void _playSound(String fileName) async {
     try {
+      if (_currentlyPlaying == fileName) {
+        await _audioPlayer.stop();
+        setState(() => _currentlyPlaying = null);
+        return;
+      }
+
       await _audioPlayer.stop();
+      await _audioPlayer.setReleaseMode(_isLooping ? ReleaseMode.loop : ReleaseMode.release);
       await _audioPlayer.play(AssetSource('sounds/$fileName'));
+      setState(() => _currentlyPlaying = fileName);
+
+      _audioPlayer.onPlayerComplete.listen((event) {
+        if (!_isLooping) {
+          setState(() => _currentlyPlaying = null);
+        }
+      });
     } catch (e) {
       debugPrint('Sound error: $e');
     }
@@ -84,9 +101,13 @@ class _ToolsScreenState extends State<ToolsScreen> {
                   children: [
                     _buildTacticalInstrument(),
                     const SizedBox(height: 24),
+                    _buildRadarView(),
+                    const SizedBox(height: 24),
                     _buildPrimaryActions(),
                     const SizedBox(height: 24),
                     _buildEmergencySounds(),
+                    const SizedBox(height: 24),
+                    _buildSafeZonesCard(),
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -265,6 +286,99 @@ class _ToolsScreenState extends State<ToolsScreen> {
     );
   }
 
+  Widget _buildRadarView() {
+    return ListenableBuilder(
+      listenable: P2PConnectionService(),
+      builder: (context, _) {
+        final devices = P2PConnectionService().endpointMap.values.toList();
+        return Container(
+          padding: const EdgeInsets.all(24),
+          decoration: BoxDecoration(
+            color: const Color(0xFF0A0A0A),
+            borderRadius: BorderRadius.circular(32),
+            border: Border.all(color: Colors.redAccent.withOpacity(0.1)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text('YAKINDAKİ CİHAZLAR (MESH)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+                  Text('${devices.length} AKTİF', style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold)),
+                ],
+              ),
+              const SizedBox(height: 20),
+              if (devices.isEmpty)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(20.0),
+                  child: Text('Yakında cihaz bulunamadı...', style: TextStyle(color: Colors.white24, fontSize: 12)),
+                ))
+              else
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: devices.length,
+                  itemBuilder: (context, i) => Container(
+                    margin: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white.withOpacity(0.03), borderRadius: BorderRadius.circular(12)),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.radar_rounded, color: Colors.redAccent, size: 16),
+                        const SizedBox(width: 12),
+                        Text(devices[i].endpointName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        const Spacer(),
+                        const Text('Sinyal: Güçlü', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildSafeZonesCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: const Color(0xFF121212),
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: Colors.blueAccent.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('EN YAKIN GÜVENLİ BÖLGELER (ÇEVRİMDIŞI)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 20),
+          _buildSafeZoneItem('Belediye Parkı', '450m', Colors.greenAccent),
+          _buildSafeZoneItem('Spor Kompleksi', '1.2km', Colors.blueAccent),
+          _buildSafeZoneItem('Afet Toplanma Alanı A-2', '2.8km', Colors.orangeAccent),
+          const SizedBox(height: 12),
+          const Text('*Bu veriler yerel önbellekten yüklenmiştir.', style: TextStyle(color: Colors.white24, fontSize: 9, fontStyle: FontStyle.italic)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSafeZoneItem(String name, String dist, Color color) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: [
+          Icon(Icons.location_on_rounded, color: color, size: 18),
+          const SizedBox(width: 12),
+          Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
+          const Spacer(),
+          Text(dist, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
+  }
+
   Widget _buildEmergencySounds() {
     return Container(
       padding: const EdgeInsets.all(24),
@@ -275,38 +389,83 @@ class _ToolsScreenState extends State<ToolsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('ACİL DURUM SİNYALLERİ', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('ACİL DURUM SİNYALLERİ', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+              Row(
+                children: [
+                  const Text('DÖNGÜ', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+                  Switch(
+                    value: _isLooping,
+                    onChanged: (v) => setState(() => _isLooping = v),
+                    activeColor: Colors.redAccent,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                ],
+              ),
+            ],
+          ),
           const SizedBox(height: 20),
           _buildSoundButton('HAVA SİRENİ', 'siren.wav', Colors.purpleAccent),
           const SizedBox(height: 12),
           _buildSoundButton('KURTARMA DÜDÜĞÜ', 'whistle.wav', Colors.blueAccent),
           const SizedBox(height: 12),
           _buildSoundButton('YÜKSEK FREKANS', 'high_pitch.wav', Colors.orangeAccent),
+          const SizedBox(height: 24),
+          const Text('TİZ FREKANSLAR', style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _buildFreqChip('8 kHz', 'freq_8khz.wav'),
+              _buildFreqChip('10 kHz', 'freq_10khz.wav'),
+              _buildFreqChip('12 kHz', 'freq_12khz.wav'),
+              _buildFreqChip('15 kHz', 'freq_15khz.wav'),
+            ],
+          ),
         ],
       ),
     );
   }
 
   Widget _buildSoundButton(String label, String file, Color color) {
+    bool isPlaying = _currentlyPlaying == file;
     return GestureDetector(
       onTap: () => _playSound(file),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
         decoration: BoxDecoration(
-          color: Colors.black,
+          color: isPlaying ? color.withOpacity(0.1) : Colors.black,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.2)),
+          border: Border.all(color: isPlaying ? color : color.withOpacity(0.2)),
         ),
         child: Row(
           children: [
-            Icon(Icons.play_circle_fill_rounded, color: color),
+            Icon(isPlaying ? Icons.stop_circle_rounded : Icons.play_circle_fill_rounded, color: color),
             const SizedBox(width: 16),
             Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             const Spacer(),
-            const Icon(Icons.volume_up_rounded, color: Colors.white24, size: 16),
+            if (isPlaying)
+              const Icon(Icons.graphic_eq_rounded, color: Colors.white70, size: 16)
+            else
+              const Icon(Icons.volume_up_rounded, color: Colors.white24, size: 16),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildFreqChip(String label, String file) {
+    bool isPlaying = _currentlyPlaying == file;
+    return ActionChip(
+      label: Text(label),
+      onPressed: () => _playSound(file),
+      backgroundColor: isPlaying ? Colors.redAccent : Colors.white.withOpacity(0.05),
+      labelStyle: TextStyle(color: isPlaying ? Colors.white : Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
+      side: BorderSide(color: isPlaying ? Colors.redAccent : Colors.white10),
+      avatar: Icon(isPlaying ? Icons.stop : Icons.waves, size: 14, color: isPlaying ? Colors.white : Colors.white38),
     );
   }
 }

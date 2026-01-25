@@ -11,9 +11,12 @@ import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:path/path.dart' as p;
 import '../services/database_service.dart';
 import '../services/profile_service.dart';
 import '../services/voice_call_service.dart';
+import '../services/p2p_connection_service.dart';
+import 'voice_call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -23,22 +26,30 @@ class ChatScreen extends StatefulWidget {
 }
 
 class _ChatScreenState extends State<ChatScreen> {
-  final Strategy strategy = Strategy.P2P_CLUSTER;
   String userName = 'Kullanıcı';
 
-  Map<String, ConnectionInfo> endpointMap = {};
   List<ChatMessage> messages = [];
   final TextEditingController _textController = TextEditingController();
   final VoiceCallService _voiceCallService = VoiceCallService();
   final AudioRecorder _audioRecorder = AudioRecorder();
+  final P2PConnectionService _p2p = P2PConnectionService();
+
   bool _isCalling = false;
   bool _isRecording = false;
   String? _activeCallEndpoint;
+  bool _isScanning = true;
 
   @override
   void initState() {
     super.initState();
+    _p2p.addListener(_onP2PChange);
     _initChat();
+  }
+
+  void _onP2PChange() {
+    if (mounted) setState(() {
+      if (_p2p.endpointMap.isNotEmpty) _isScanning = false;
+    });
   }
 
   Future<void> _initChat() async {
@@ -48,8 +59,8 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     await _loadMessages();
     await _voiceCallService.init();
-    startDiscovery();
-    startAdvertising();
+    _p2p.startDiscovery(userName, onConnectionInitiated);
+    _p2p.startAdvertising(userName, onConnectionInitiated);
   }
 
   Future<void> _loadMessages() async {
@@ -68,79 +79,109 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   void dispose() {
-    Nearby().stopAdvertising();
-    Nearby().stopDiscovery();
-    Nearby().stopAllEndpoints();
+    _p2p.removeListener(_onP2PChange);
     super.dispose();
   }
 
-  void startAdvertising() async {
-    try {
-      await Nearby().startAdvertising(userName, strategy,
-        onConnectionInitiated: onConnectionInitiated,
-        onConnectionResult: (id, status) => debugPrint('Status: $status'),
-        onDisconnected: (id) => setState(() => endpointMap.remove(id)),
-      );
-    } catch (e) { debugPrint('Error: $e'); }
-  }
-
-  void startDiscovery() async {
-    try {
-      await Nearby().startDiscovery(userName, strategy,
-        onEndpointFound: (id, name, serviceId) {
-          Nearby().requestConnection(userName, id,
-            onConnectionInitiated: onConnectionInitiated,
-            onConnectionResult: (id, status) => debugPrint('Status: $status'),
-            onDisconnected: (id) => setState(() => endpointMap.remove(id)),
-          );
-        },
-        onEndpointLost: (id) {},
-      );
-    } catch (e) { debugPrint('Error: $e'); }
-  }
+  Map<int, Map<String, dynamic>> _incomingFileMeta = {};
 
   void onConnectionInitiated(String id, ConnectionInfo info) {
-    setState(() => endpointMap[id] = info);
     Nearby().acceptConnection(id,
       onPayLoadRecieved: (id, payload) async {
         if (payload.type == PayloadType.BYTES) {
           Uint8List bytes = payload.bytes!;
-          if (_isCalling && _activeCallEndpoint == id) {
+
+          // Audio data check (no prefix, raw bytes)
+          if (bytes.length >= 1024 && _isCalling && _activeCallEndpoint == id) {
              _voiceCallService.receiveAudio(bytes);
              return;
           }
+
           String str = utf8.decode(bytes);
-          if (str.startsWith('CMD:VOICE_START')) {
-            setState(() { _isCalling = true; _activeCallEndpoint = id; });
-            _voiceCallService.startCall(id);
-            return;
-          } else if (str.startsWith('CMD:VOICE_STOP')) {
-            setState(() { _isCalling = false; _activeCallEndpoint = null; });
-            _voiceCallService.stopCall();
+
+          if (str.startsWith('CMD:')) {
+            _handleCommand(id, str);
             return;
           }
 
-          String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+          if (str.startsWith('{')) {
+            try {
+              var data = jsonDecode(str);
+              if (data['type'] == 'FILE_META') {
+                _incomingFileMeta[data['payloadId']] = data;
+                return;
+              }
+            } catch (e) {}
+          }
+
+          String sender = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
           String type = str.startsWith('📍 Konum:') ? 'location' : 'text';
           String? extra = type == 'location' ? str.split('📍 Konum: ').last : null;
           await DatabaseService.insertMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra);
           setState(() => messages.add(ChatMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra)));
         } else if (payload.type == PayloadType.FILE) {
-          String path = payload.filePath!;
-          String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
-          String type = path.endsWith('.m4a') ? 'voice' : 'image';
-          await DatabaseService.insertMessage(sender: sender, text: type == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: type, extraData: path);
-          setState(() => messages.add(ChatMessage(sender: sender, text: type == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: type, extraData: path)));
+          // We wait for meta to arrive or use a default
+          _handleFilePayload(id, payload);
         }
       },
     );
+  }
+
+  void _handleCommand(String id, String cmd) {
+    if (cmd == 'CMD:VOICE_START') {
+      _startIncomingCall(id);
+    } else if (cmd == 'CMD:VOICE_STOP') {
+      if (_isCalling) Navigator.pop(context);
+      setState(() { _isCalling = false; _activeCallEndpoint = null; });
+      _voiceCallService.stopCall();
+    }
+  }
+
+  void _handleFilePayload(String id, Payload payload) async {
+    String path = payload.filePath!;
+    String sender = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+
+    // Polling for metadata if not arrived yet
+    int retries = 0;
+    while (!_incomingFileMeta.containsKey(payload.id) && retries < 10) {
+      await Future.delayed(const Duration(milliseconds: 500));
+      retries++;
+    }
+
+    var meta = _incomingFileMeta[payload.id];
+    String fileType = meta?['fileType'] ?? (path.endsWith('.m4a') ? 'voice' : 'image');
+    String originalName = meta?['fileName'] ?? p.basename(path);
+
+    final appDir = await getApplicationDocumentsDirectory();
+    final newPath = p.join(appDir.path, originalName);
+
+    try {
+      if (await File(path).exists()) {
+        await File(path).copy(newPath);
+        await DatabaseService.insertMessage(sender: sender, text: fileType == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: fileType, extraData: newPath);
+        setState(() => messages.add(ChatMessage(sender: sender, text: fileType == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: fileType, extraData: newPath)));
+      }
+    } catch (e) {
+      debugPrint('File error: $e');
+    }
+  }
+
+  void _startIncomingCall(String id) {
+    setState(() { _isCalling = true; _activeCallEndpoint = id; });
+    Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(
+      endpointId: id,
+      endpointName: _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen',
+      voiceCallService: _voiceCallService,
+    ))).then((_) {
+      setState(() { _isCalling = false; _activeCallEndpoint = null; });
+    });
   }
 
   void sendMessage() async {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
     Uint8List bytes = Uint8List.fromList(utf8.encode(text));
-    for (String id in endpointMap.keys) Nearby().sendBytesPayload(id, bytes);
+    for (String id in _p2p.endpointMap.keys) Nearby().sendBytesPayload(id, bytes);
     await DatabaseService.insertMessage(sender: 'Ben', text: text, isMe: true);
     setState(() {
       messages.add(ChatMessage(sender: 'Ben', text: text, isMe: true));
@@ -149,33 +190,83 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _toggleVoiceCall() {
-    if (endpointMap.isEmpty) return;
-    String targetId = endpointMap.keys.first;
-    if (_isCalling) {
-      Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_STOP')));
-      _voiceCallService.stopCall();
-      setState(() { _isCalling = false; _activeCallEndpoint = null; });
-    } else {
-      Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_START')));
-      _voiceCallService.startCall(targetId);
-      setState(() { _isCalling = true; _activeCallEndpoint = targetId; });
+    if (_p2p.endpointMap.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlı cihaz yok')));
+      return;
     }
+
+    if (_p2p.endpointMap.length == 1) {
+      _initiateCall(_p2p.endpointMap.keys.first);
+    } else {
+      _showDevicePicker();
+    }
+  }
+
+  void _showDevicePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Padding(
+            padding: EdgeInsets.all(20),
+            child: Text('ARANACAK CİHAZI SEÇİN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+          ),
+          ..._p2p.endpointMap.entries.map((e) => ListTile(
+            leading: const Icon(Icons.phone_android, color: Colors.redAccent),
+            title: Text(e.value.endpointName, style: const TextStyle(color: Colors.white)),
+            onTap: () {
+              Navigator.pop(context);
+              _initiateCall(e.key);
+            },
+          )),
+          const SizedBox(height: 20),
+        ],
+      ),
+    );
+  }
+
+  void _initiateCall(String targetId) {
+    Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_START')));
+    setState(() { _isCalling = true; _activeCallEndpoint = targetId; });
+    Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(
+      endpointId: targetId,
+      endpointName: _p2p.endpointMap[targetId]?.endpointName ?? 'Bilinmeyen',
+      voiceCallService: _voiceCallService,
+    ))).then((_) {
+      setState(() { _isCalling = false; _activeCallEndpoint = null; });
+    });
   }
 
   Future<void> _sendImage() async {
     final XFile? image = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (image != null) {
-      for (String id in endpointMap.keys) Nearby().sendFilePayload(id, image.path);
+      for (String id in _p2p.endpointMap.keys) {
+        int payloadId = await Nearby().sendFilePayload(id, image.path);
+        _sendFileMeta(id, payloadId, image.path, 'image');
+      }
       await DatabaseService.insertMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path);
       setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path)));
     }
+  }
+
+  void _sendFileMeta(String to, int payloadId, String path, String type) {
+    var meta = {
+      'type': 'FILE_META',
+      'payloadId': payloadId,
+      'fileName': p.basename(path),
+      'fileType': type
+    };
+    Nearby().sendBytesPayload(to, Uint8List.fromList(utf8.encode(jsonEncode(meta))));
   }
 
   Future<void> _sendLocation() async {
     Position pos = await Geolocator.getCurrentPosition();
     String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
     String msg = '📍 Konum: $url';
-    for (String id in endpointMap.keys) Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
+    for (String id in _p2p.endpointMap.keys) Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
     await DatabaseService.insertMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url);
     setState(() => messages.add(ChatMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url)));
   }
@@ -185,13 +276,17 @@ class _ChatScreenState extends State<ChatScreen> {
       final path = await _audioRecorder.stop();
       setState(() => _isRecording = false);
       if (path != null) {
-        for (String id in endpointMap.keys) Nearby().sendFilePayload(id, path);
+        for (String id in _p2p.endpointMap.keys) {
+          int payloadId = await Nearby().sendFilePayload(id, path);
+          _sendFileMeta(id, payloadId, path, 'voice');
+        }
         await DatabaseService.insertMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path);
         setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path)));
       }
     } else if (await _audioRecorder.hasPermission()) {
       final dir = await getApplicationDocumentsDirectory();
-      await _audioRecorder.start(const RecordConfig(), path: '${dir.path}/v_${DateTime.now().ms}.m4a');
+      final path = '${dir.path}/v_${DateTime.now().ms}.m4a';
+      await _audioRecorder.start(const RecordConfig(), path: path);
       setState(() => _isRecording = true);
     }
   }
@@ -201,19 +296,43 @@ class _ChatScreenState extends State<ChatScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Column(
+        child: Stack(
           children: [
-            _buildTacticalHeader(),
-            Expanded(
-              child: ListView.builder(
-                padding: const EdgeInsets.all(20),
-                itemCount: messages.length,
-                itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
-              ),
+            Column(
+              children: [
+                _buildTacticalHeader(),
+                Expanded(
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: messages.length,
+                    itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
+                  ),
+                ),
+                _buildTacticalInput(),
+              ],
             ),
-            _buildTacticalInput(),
+            if (_isScanning && _p2p.endpointMap.isEmpty) _buildScanningOverlay(),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildScanningOverlay() {
+    return Container(
+      color: Colors.black.withOpacity(0.9),
+      width: double.infinity,
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const CircularProgressIndicator(color: Colors.redAccent),
+          const SizedBox(height: 24),
+          const Text('CİHAZLAR TARANIYOR...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
+          const SizedBox(height: 8),
+          const Text('Lütfen yakındaki bir cihazın da tarama\nyaptığından emin olun.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
+          const SizedBox(height: 40),
+          TextButton(onPressed: () => setState(() => _isScanning = false), child: const Text('ÇEVRİMDIŞI MODDA DEVAM ET', style: TextStyle(color: Colors.redAccent))),
+        ],
       ),
     );
   }
@@ -231,7 +350,7 @@ class _ChatScreenState extends State<ChatScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(_isCalling ? 'ÇAĞRI AKTİF' : 'MESH SOHBET', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1)),
-                Text('${endpointMap.length} Cihaz Bağlı', style: TextStyle(color: _isCalling ? Colors.greenAccent : Colors.white38, fontSize: 11)),
+                Text('${_p2p.endpointMap.length} Cihaz Bağlı', style: TextStyle(color: _isCalling ? Colors.greenAccent : Colors.white38, fontSize: 11)),
               ],
             ),
           ),

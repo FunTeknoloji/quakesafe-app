@@ -9,12 +9,21 @@ import 'profile_screen.dart';
 class OfflineMainWrapper extends StatefulWidget {
   const OfflineMainWrapper({super.key});
 
+  static _OfflineMainWrapperState? of(BuildContext context) =>
+      context.findAncestorStateOfType<_OfflineMainWrapperState>();
+
   @override
   State<OfflineMainWrapper> createState() => _OfflineMainWrapperState();
 }
 
 class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
   int _selectedIndex = 0;
+
+  void setTab(int index) {
+    setState(() {
+      _selectedIndex = index;
+    });
+  }
 
   final List<Widget> _screens = [
     const OfflineHomeScreen(),

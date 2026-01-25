@@ -5,7 +5,16 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'package:sensors_plus/sensors_plus.dart';
 import 'package:nearby_connections/nearby_connections.dart';
+import 'package:torch_light/torch_light.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:battery_plus/battery_plus.dart';
 import '../services/database_service.dart';
+import '../services/survival_kit_service.dart';
+import '../services/p2p_connection_service.dart';
+import 'offline_main_wrapper.dart';
+import 'guide_detail_screen.dart';
 
 class OfflineHomeScreen extends StatefulWidget {
   const OfflineHomeScreen({super.key});
@@ -19,21 +28,21 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
   late AnimationController _pulseController;
   double _tiltX = 0, _tiltY = 0;
   StreamSubscription? _accelerometerSub;
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  final Battery _battery = Battery();
+  int _batteryLevel = 0;
+  bool _isFlashlightOn = false;
 
-  final Map<String, bool> _kitItems = {
-    'Su (4 Litre)': true,
-    'Konserve Gıda': true,
-    'El Feneri': true,
-    'Pilli Radyo': false,
-    'İlkyardım Çantası': true,
-    'Düdük': false,
-    'Toz Maskesi': false,
-    'Çakı': true,
-  };
+  Map<String, bool> _kitItems = {};
+  bool _isLoadingKit = true;
+  Timer? _beaconTimer;
 
   @override
   void initState() {
     super.initState();
+    _loadKit();
+    _getBattery();
+    _startEmergencyBeacon();
     _pulseController = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 2),
@@ -49,11 +58,43 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
     });
   }
 
+  Future<void> _loadKit() async {
+    final items = await SurvivalKitService.loadKit();
+    setState(() {
+      _kitItems = items;
+      _isLoadingKit = false;
+    });
+  }
+
+  Future<void> _getBattery() async {
+    final level = await _battery.batteryLevel;
+    setState(() => _batteryLevel = level);
+  }
+
+  Future<void> _toggleKitItem(String label, bool value) async {
+    setState(() {
+      _kitItems[label] = !value;
+    });
+    await SurvivalKitService.saveKit(_kitItems);
+  }
+
   @override
   void dispose() {
     _pulseController.dispose();
     _accelerometerSub?.cancel();
+    _beaconTimer?.cancel();
+    _audioPlayer.dispose();
     super.dispose();
+  }
+
+  void _startEmergencyBeacon() {
+    _beaconTimer = Timer.periodic(const Duration(minutes: 5), (timer) async {
+      if (!_isSafe) {
+        Position pos = await Geolocator.getCurrentPosition();
+        String beaconMsg = "🚨 OTOMATİK BEACON: YARDIM GEREKLİ! Konum: https://www.google.com/maps?q=${pos.latitude},${pos.longitude}";
+        P2PConnectionService().broadcast(beaconMsg);
+      }
+    });
   }
 
   double get _kitProgress {
@@ -151,6 +192,8 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
             children: [
               Expanded(child: _buildDashboardStat('Eğim', '${_tiltX.toStringAsFixed(1)}°', FontAwesomeIcons.arrowsUpDownLeftRight)),
               Container(width: 1, height: 40, color: Colors.white10),
+              Expanded(child: _buildDashboardStat('Batarya', '%$_batteryLevel', _batteryLevel > 20 ? Icons.battery_full_rounded : Icons.battery_alert_rounded)),
+              Container(width: 1, height: 40, color: Colors.white10),
               Expanded(child: _buildDashboardStat('Konum', 'Çevrimdışı', Icons.location_off_rounded)),
             ],
           ),
@@ -190,43 +233,103 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
       crossAxisSpacing: 15,
       childAspectRatio: 1.6,
       children: [
-        _buildToolCard('FENER', Icons.flashlight_on_rounded, Colors.orangeAccent),
-        _buildToolCard('SİREN', Icons.warning_amber_rounded, Colors.purpleAccent),
-        _buildToolCard('SOS', Icons.emergency_share_rounded, Colors.redAccent),
-        _buildToolCard('PUSULA', Icons.explore_rounded, Colors.blueAccent),
+        _buildToolCard('FENER', _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded, Colors.orangeAccent, _toggleFlashlight),
+        _buildToolCard('SİREN', Icons.warning_amber_rounded, Colors.purpleAccent, _playSiren),
+        _buildToolCard('SOS', Icons.emergency_share_rounded, Colors.redAccent, _makeSosCall),
+        _buildToolCard('PUSULA', Icons.explore_rounded, Colors.blueAccent, _goToCompass),
       ],
     );
   }
 
-  Widget _buildToolCard(String title, IconData icon, Color color) {
-    return Container(
-      decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(24), border: Border.all(color: color.withOpacity(0.1))),
-      child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))]),
+  Widget _buildToolCard(String title, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(24), border: Border.all(color: color.withOpacity(0.1))),
+        child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))]),
+      ),
     );
+  }
+
+  Future<void> _toggleFlashlight() async {
+    try {
+      if (_isFlashlightOn) {
+        await TorchLight.disableTorch();
+      } else {
+        await TorchLight.enableTorch();
+      }
+      setState(() {
+        _isFlashlightOn = !_isFlashlightOn;
+      });
+    } catch (e) {
+      debugPrint('Flashlight error: $e');
+    }
+  }
+
+  void _playSiren() async {
+    try {
+      await _audioPlayer.play(AssetSource('sounds/siren.wav'));
+    } catch (e) {
+      debugPrint('Siren error: $e');
+    }
+  }
+
+  Future<void> _makeSosCall() async {
+    final Uri url = Uri.parse('tel:112');
+    if (await canLaunchUrl(url)) {
+      await launchUrl(url);
+    }
+  }
+
+  void _goToCompass() {
+    OfflineMainWrapper.of(context)?.setTab(2); // Araçlar tab
   }
 
   Widget _buildModernGuideList() {
     return Column(children: [
-      _buildGuideItem('DEPREM REHBERİ', 'Anlık yapılması gerekenler', Icons.menu_book_rounded, Colors.orangeAccent),
-      _buildGuideItem('İLK YARDIM', 'Acil müdahale kılavuzu', Icons.medical_services_rounded, Colors.redAccent),
+      _buildGuideItem('DEPREM REHBERİ', 'Anlık yapılması gerekenler', Icons.menu_book_rounded, Colors.orangeAccent, () {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => GuideDetailScreen(
+          title: 'DEPREM REHBERİ',
+          content: [
+            GuideContent('Deprem Anında Bina İçindeyseniz', 'Pencere, raf, avize gibi düşebilecek nesnelerden uzak durun. Sağlam bir masanın yanına ÇÖK-KAPAN-TUTUN yapın. Merdivenlere veya çıkışlara koşmayın.'),
+            GuideContent('Deprem Anında Açık Alandaysanız', 'Binalardan, elektrik direklerinden ve ağaçlardan uzak durun. Başınızı koruyarak güvenli bir alanda bekleyin.'),
+            GuideContent('Deprem Sonrası İlk Dakikalar', 'Sakin olun, çevrenizdekileri kontrol edin. Gaz ve elektrik vanalarını kapatın. Binayı merdivenleri kullanarak terk edin, asansör kullanmayın.'),
+          ],
+        )));
+      }),
+      _buildGuideItem('İLK YARDIM', 'Acil müdahale kılavuzu', Icons.medical_services_rounded, Colors.redAccent, () {
+        Navigator.push(context, MaterialPageRoute(builder: (context) => GuideDetailScreen(
+          title: 'İLK YARDIM REHBERİ',
+          content: [
+            GuideContent('Kanamalarda Müdahale', 'Kanayan yere temiz bir bezle bastırın. Mümkünse bölgeyi kalp seviyesinden yukarı kaldırın.'),
+            GuideContent('Kırıklarda Müdahale', 'Kırık olduğundan şüphelenilen bölgeyi hareket ettirmeyin. Sert bir malzeme ile sabitleyin (atellleme).'),
+            GuideContent('Bilinç Kaybı', 'Hastayı yan yatırarak soluk yolunun açık olduğundan emin olun. Tıbbi yardım gelene kadar başından ayrılmayın.'),
+          ],
+        )));
+      }),
     ]);
   }
 
-  Widget _buildGuideItem(String title, String subtitle, IconData icon, Color color) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: const Color(0xFF121212), borderRadius: BorderRadius.circular(20)),
-      child: Row(children: [
-        Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
-        const SizedBox(width: 16),
-        Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 12))])),
-        const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white10, size: 14),
-      ]),
+  Widget _buildGuideItem(String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: const Color(0xFF121212), borderRadius: BorderRadius.circular(20)),
+        child: Row(children: [
+          Container(padding: const EdgeInsets.all(10), decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12)), child: Icon(icon, color: color, size: 20)),
+          const SizedBox(width: 16),
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Text(title, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)), Text(subtitle, style: const TextStyle(color: Colors.white38, fontSize: 12))])),
+          const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white10, size: 14),
+        ]),
+      ),
     );
   }
 
   Widget _buildInteractiveKitCard() {
+    if (_isLoadingKit) return const Center(child: CircularProgressIndicator());
+
     return Container(
       padding: const EdgeInsets.all(24),
       decoration: BoxDecoration(color: const Color(0xFF0F0F0F), borderRadius: BorderRadius.circular(32), border: Border.all(color: Colors.white.withOpacity(0.05))),
@@ -250,24 +353,26 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
     setState(() => _isSafe = newStatus);
 
     String statusMsg = newStatus ? "✅ GÜVENDEYİM" : "🚨 YARDIM GEREKLİ (SOS)";
-    Uint8List bytes = Uint8List.fromList(utf8.encode(statusMsg));
 
-    // Attempt to broadcast to any currently connected endpoints if any
-    // This is best-effort as the Chat screen usually handles connections.
-    // In a real app, we'd have a central ConnectionManager.
+    // Broadcast status to mesh network
+    P2PConnectionService().broadcast(statusMsg);
 
     await DatabaseService.insertMessage(sender: 'SİSTEM', text: "Durumunuz güncellendi: $statusMsg", isMe: true);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Durumunuz paylaşıldı: $statusMsg'), backgroundColor: newStatus ? Colors.green : Colors.red),
+        SnackBar(
+          content: Text('Durumunuz paylaşıldı: $statusMsg'),
+          backgroundColor: newStatus ? Colors.green : Colors.red,
+          behavior: SnackBarBehavior.floating,
+        ),
       );
     }
   }
 
   Widget _buildKitToggle(String label, bool value) {
     return GestureDetector(
-      onTap: () => setState(() => _kitItems[label] = !value),
+      onTap: () => _toggleKitItem(label, value),
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 8.0),
         child: Row(children: [

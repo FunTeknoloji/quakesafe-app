@@ -18,3 +18,7 @@ create_tone_wav('assets/sounds/siren.wav', 880)  # A5 note
 create_tone_wav('assets/sounds/whistle.wav', 1760) # A6 note
 create_tone_wav('assets/sounds/high_pitch.wav', 3000) # High pitch
 create_tone_wav('assets/sounds/beep.wav', 440) # A4 note
+create_tone_wav('assets/sounds/freq_8khz.wav', 8000)
+create_tone_wav('assets/sounds/freq_10khz.wav', 10000)
+create_tone_wav('assets/sounds/freq_12khz.wav', 12000)
+create_tone_wav('assets/sounds/freq_15khz.wav', 15000)

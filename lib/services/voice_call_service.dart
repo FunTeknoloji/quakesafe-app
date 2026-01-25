@@ -13,8 +13,9 @@ class VoiceCallService {
   bool _isCallActive = false;
 
   Future<void> init() async {
-    await _recorder.initialize();
-    await _player.initialize();
+    // Use a lower sample rate for better performance over P2P mesh
+    await _recorder.initialize(sampleRate: 16000);
+    await _player.initialize(sampleRate: 16000);
   }
 
   void startCall(String endpointId) {
@@ -24,10 +25,16 @@ class VoiceCallService {
     _player.start();
     _recorder.start();
 
+    List<int> buffer = [];
     _recorderSubscription = _recorder.audioStream.listen((Uint8List data) {
       // Send audio data in chunks.
-      // In a real scenario, we might want to compress this.
-      Nearby().sendBytesPayload(endpointId, data);
+      // Small chunks cause high overhead in Nearby Connections.
+      // We group a few chunks together to reduce packet frequency.
+      buffer.addAll(data);
+      if (buffer.length >= 4096) {
+        Nearby().sendBytesPayload(endpointId, Uint8List.fromList(buffer));
+        buffer.clear();
+      }
     });
   }
 

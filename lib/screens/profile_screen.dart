@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../services/profile_service.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -10,24 +12,42 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
+  String? _photoPath;
 
   @override
   void initState() {
     super.initState();
-    _loadName();
+    _loadProfile();
   }
 
-  Future<void> _loadName() async {
+  Future<void> _loadProfile() async {
     final name = await ProfileService.getUsername();
-    if (name != null) _nameController.text = name;
+    final photo = await ProfileService.getProfilePhoto();
+    setState(() {
+      if (name != null) _nameController.text = name;
+      _photoPath = photo;
+    });
   }
 
-  Future<void> _saveName() async {
+  Future<void> _saveProfile() async {
     await ProfileService.setUsername(_nameController.text.trim());
+    if (_photoPath != null) await ProfileService.setProfilePhoto(_photoPath!);
+
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profil Güncellendi'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Profil Başarıyla Kaydedildi'), backgroundColor: Colors.green),
       );
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final XFile? image = await ImagePicker().pickImage(source: ImageSource.gallery);
+    if (image != null) {
+      setState(() {
+        _photoPath = image.path;
+      });
+      // Auto-save photo path
+      await ProfileService.setProfilePhoto(image.path);
     }
   }
 
@@ -46,18 +66,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
               Center(
                 child: Stack(
                   children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.redAccent.withOpacity(0.1),
-                      child: const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent),
+                    GestureDetector(
+                      onTap: _pickImage,
+                      child: CircleAvatar(
+                        radius: 60,
+                        backgroundColor: Colors.redAccent.withOpacity(0.1),
+                        backgroundImage: _photoPath != null ? FileImage(File(_photoPath!)) : null,
+                        child: _photoPath == null ? const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent) : null,
+                      ),
                     ),
                     Positioned(
                       bottom: 0,
                       right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                        child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                      child: GestureDetector(
+                        onTap: _pickImage,
+                        child: Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                          child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                        ),
                       ),
                     ),
                   ],
@@ -77,12 +104,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 width: double.infinity,
                 height: 56,
                 child: ElevatedButton(
-                  onPressed: _saveName,
+                  onPressed: _saveProfile,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  child: const Text('DEĞİŞİKLİKLERİ KAYDET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                  child: const Text('TÜM DEĞİŞİKLİKLERİ KAYDET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
               ),
             ],
