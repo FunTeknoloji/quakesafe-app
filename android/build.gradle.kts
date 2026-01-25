@@ -20,7 +20,7 @@ subprojects {
 }
 
 subprojects {
-    afterEvaluate {
+    fun applyNamespace(project: Project) {
         if (project.hasProperty("android")) {
             val android = project.extensions.getByName("android")
             try {
@@ -32,6 +32,14 @@ subprojects {
             } catch (e: Exception) {
                 // Ignore if method doesn't exist
             }
+        }
+    }
+
+    if (project.state.executed) {
+        applyNamespace(project)
+    } else {
+        project.afterEvaluate {
+            applyNamespace(project)
         }
     }
 }
