@@ -405,9 +405,15 @@ class _ToolsScreenState extends State<ToolsScreen> {
                       children: [
                         const Icon(Icons.radar_rounded, color: Colors.redAccent, size: 16),
                         const SizedBox(width: 12),
-                        Text(devices[i].endpointName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(devices[i].endpointName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                            const Text('P2P Mesh Link', style: TextStyle(color: Colors.white24, fontSize: 9)),
+                          ],
+                        ),
                         const Spacer(),
-                        const Text('Sinyal: Güçlü', style: TextStyle(color: Colors.white38, fontSize: 10)),
+                        _buildStabilityIndicator(P2PConnectionService().connectionQuality[P2PConnectionService().endpointMap.keys.elementAt(i)] ?? 10),
                       ],
                     ),
                   ),
@@ -522,6 +528,28 @@ class _ToolsScreenState extends State<ToolsScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildStabilityIndicator(int score) {
+    Color color = score > 15 ? Colors.greenAccent : (score > 5 ? Colors.orangeAccent : Colors.redAccent);
+    String label = score > 15 ? 'STABİL' : (score > 5 ? 'ORTA' : 'DÜŞÜK');
+    return Column(
+      children: [
+        Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 2),
+        Row(
+          children: List.generate(3, (index) => Container(
+            width: 8,
+            height: 3,
+            margin: const EdgeInsets.symmetric(horizontal: 1),
+            decoration: BoxDecoration(
+              color: index < (score / 10).ceil() ? color : Colors.white10,
+              borderRadius: BorderRadius.circular(2),
+            ),
+          )),
+        ),
+      ],
     );
   }
 

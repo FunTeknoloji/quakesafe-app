@@ -36,6 +36,7 @@ class _ChatScreenState extends State<ChatScreen> {
   final AudioRecorder _audioRecorder = AudioRecorder();
   final P2PConnectionService _p2p = P2PConnectionService();
 
+  DateTime? _lastMessageTime;
   bool _isCalling = false;
   bool _isRecording = false;
   String? _activeCallEndpoint;
@@ -71,6 +72,8 @@ class _ChatScreenState extends State<ChatScreen> {
           timestamp: DateTime.fromMillisecondsSinceEpoch(m['timestamp']),
           type: m['type'] ?? 'text',
           extraData: m['extraData'],
+          status: m['status'] ?? 'sent',
+          priority: m['priority'] ?? 'normal',
         )).toList();
       });
     }
@@ -119,11 +122,13 @@ class _ChatScreenState extends State<ChatScreen> {
 
           String str = utf8.decode(bytes);
 
+          // Handle legacy commands or voice signaling
           if (str.startsWith('CMD:')) {
             _handleCommand(id, str);
             return;
           }
 
+          // Handle new JSON format in Service
           if (str.startsWith('{')) {
             try {
               var data = jsonDecode(str);
@@ -131,16 +136,18 @@ class _ChatScreenState extends State<ChatScreen> {
                 _incomingFileMeta[data['payloadId']] = data;
                 return;
               }
+              // Pass to reliable service
+              _p2p.handleIncomingPayload(id, payload);
+              return;
             } catch (e) {}
           }
 
+          // Legacy plain text (still support for simplicity)
           String sender = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
           String type = str.startsWith('📍 Konum:') ? 'location' : 'text';
           String? extra = type == 'location' ? str.split('📍 Konum: ').last : null;
           await DatabaseService.insertMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra);
-          setState(() => messages.add(ChatMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra)));
         } else if (payload.type == PayloadType.FILE) {
-          // We wait for meta to arrive or use a default
           _handleFilePayload(id, payload);
         }
       },
@@ -224,13 +231,25 @@ class _ChatScreenState extends State<ChatScreen> {
   void sendMessage() async {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
-    Uint8List bytes = Uint8List.fromList(utf8.encode(text));
-    for (String id in _p2p.endpointMap.keys) Nearby().sendBytesPayload(id, bytes);
-    await DatabaseService.insertMessage(sender: 'Ben', text: text, isMe: true);
-    setState(() {
-      messages.add(ChatMessage(sender: 'Ben', text: text, isMe: true));
-      _textController.clear();
-    });
+
+    final now = DateTime.now();
+    if (_lastMessageTime != null) {
+      final diff = now.difference(_lastMessageTime!).inSeconds;
+      if (diff < 5) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('SPAM KORUMASI: Lütfen ${5 - diff} saniye bekleyin.'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+        return;
+      }
+    }
+
+    _lastMessageTime = now;
+    _p2p.sendMessage(text: text);
+    _textController.clear();
   }
 
   void _toggleVoiceCall() {
@@ -498,6 +517,8 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessage msg) {
     bool isMe = msg.isMe;
+    bool isCritical = msg.priority == 'critical';
+
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -505,7 +526,9 @@ class _ChatScreenState extends State<ChatScreen> {
         padding: const EdgeInsets.all(12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isMe ? Colors.redAccent.withOpacity(0.9) : const Color(0xFF1A1A1A),
+          color: isMe
+            ? (isCritical ? Colors.red : Colors.redAccent.withOpacity(0.9))
+            : (isCritical ? Colors.orange.withOpacity(0.2) : const Color(0xFF1A1A1A)),
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
@@ -518,14 +541,42 @@ class _ChatScreenState extends State<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (!isMe) Text(msg.sender, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
+            if (isCritical)
+              const Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.yellow, size: 12),
+                    SizedBox(width: 4),
+                    Text('ACİL MESAJ', style: TextStyle(color: Colors.yellow, fontSize: 10, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+              ),
             _buildContent(msg),
             const SizedBox(height: 4),
-            Text(DateFormat('HH:mm').format(msg.timestamp), style: TextStyle(color: isMe ? Colors.white60 : Colors.white24, fontSize: 9)),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(DateFormat('HH:mm').format(msg.timestamp), style: TextStyle(color: isMe ? Colors.white60 : Colors.white24, fontSize: 9)),
+                if (isMe) ...[
+                  const SizedBox(width: 4),
+                  _buildStatusIcon(msg.status),
+                ],
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildStatusIcon(String status) {
+    switch (status) {
+      case 'pending': return const Icon(Icons.access_time, size: 10, color: Colors.white38);
+      case 'sent': return const Icon(Icons.check, size: 10, color: Colors.white70);
+      case 'failed': return const Icon(Icons.error_outline, size: 10, color: Colors.red);
+      default: return const SizedBox.shrink();
+    }
   }
 
   Widget _buildContent(ChatMessage msg) {
@@ -594,14 +645,21 @@ class _ChatScreenState extends State<ChatScreen> {
       shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
       builder: (context) => Padding(
         padding: const EdgeInsets.all(32),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+        child: Wrap(
+          alignment: WrapAlignment.spaceAround,
+          spacing: 20,
+          runSpacing: 20,
           children: [
             _buildAddIcon(Icons.location_on, 'Konum Paylaş', Colors.blue, _sendLocation),
+            _buildAddIcon(Icons.report_problem, 'Acil Durum Mesajı', Colors.red, _sendEmergencyMessage),
           ]
         )
       )
     );
+  }
+
+  void _sendEmergencyMessage() {
+    _p2p.sendMessage(text: "🚨 ACİL DURUM YARDIMI GEREKLİ!", priority: 'critical');
   }
 
   Widget _buildAddIcon(IconData icon, String label, Color color, VoidCallback onTap) {
@@ -616,6 +674,8 @@ class ChatMessage {
   final DateTime timestamp;
   final String type; // 'text', 'image', 'location', 'voice'
   final String? extraData;
+  final String status;
+  final String priority;
 
   ChatMessage({
     required this.sender,
@@ -624,6 +684,8 @@ class ChatMessage {
     DateTime? timestamp,
     this.type = 'text',
     this.extraData,
+    this.status = 'sent',
+    this.priority = 'normal',
   }) : timestamp = timestamp ?? DateTime.now();
 }
 
