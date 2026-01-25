@@ -17,6 +17,7 @@ import '../services/profile_service.dart';
 import '../services/voice_call_service.dart';
 import '../services/p2p_connection_service.dart';
 import 'voice_call_screen.dart';
+import 'incoming_call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -129,12 +130,31 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _handleCommand(String id, String cmd) {
     if (cmd == 'CMD:VOICE_START') {
-      _startIncomingCall(id);
+      _showIncomingCallUI(id);
+    } else if (cmd == 'CMD:VOICE_ACCEPT') {
+      _initiateCall(id);
+    } else if (cmd == 'CMD:VOICE_REJECT') {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Çağrı reddedildi')));
     } else if (cmd == 'CMD:VOICE_STOP') {
       if (_isCalling) Navigator.pop(context);
       setState(() { _isCalling = false; _activeCallEndpoint = null; });
       _voiceCallService.stopCall();
     }
+  }
+
+  void _showIncomingCallUI(String id) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => IncomingCallScreen(
+      callerName: _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen',
+      onAccept: () {
+        Navigator.pop(context);
+        Nearby().sendBytesPayload(id, Uint8List.fromList('CMD:VOICE_ACCEPT'.codeUnits));
+        _initiateCall(id);
+      },
+      onReject: () {
+        Navigator.pop(context);
+        Nearby().sendBytesPayload(id, Uint8List.fromList('CMD:VOICE_REJECT'.codeUnits));
+      },
+    )));
   }
 
   void _handleFilePayload(String id, Payload payload) async {
@@ -177,6 +197,11 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
+  void _requestCall(String targetId) {
+    Nearby().sendBytesPayload(targetId, Uint8List.fromList('CMD:VOICE_START'.codeUnits));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Çağrı isteği gönderildi...')));
+  }
+
   void sendMessage() async {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
@@ -196,7 +221,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     if (_p2p.endpointMap.length == 1) {
-      _initiateCall(_p2p.endpointMap.keys.first);
+      _requestCall(_p2p.endpointMap.keys.first);
     } else {
       _showDevicePicker();
     }
@@ -219,7 +244,7 @@ class _ChatScreenState extends State<ChatScreen> {
             title: Text(e.value.endpointName, style: const TextStyle(color: Colors.white)),
             onTap: () {
               Navigator.pop(context);
-              _initiateCall(e.key);
+              _requestCall(e.key);
             },
           )),
           const SizedBox(height: 20),
@@ -229,7 +254,6 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _initiateCall(String targetId) {
-    Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_START')));
     setState(() { _isCalling = true; _activeCallEndpoint = targetId; });
     Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(
       endpointId: targetId,

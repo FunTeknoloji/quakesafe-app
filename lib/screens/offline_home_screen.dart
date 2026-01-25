@@ -188,14 +188,17 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
             ],
           ),
           const SizedBox(height: 24),
-          Row(
-            children: [
-              Expanded(child: _buildDashboardStat('Eğim', '${_tiltX.toStringAsFixed(1)}°', FontAwesomeIcons.arrowsUpDownLeftRight)),
-              Container(width: 1, height: 40, color: Colors.white10),
-              Expanded(child: _buildDashboardStat('Batarya', '%$_batteryLevel', _batteryLevel > 20 ? Icons.battery_full_rounded : Icons.battery_alert_rounded)),
-              Container(width: 1, height: 40, color: Colors.white10),
-              Expanded(child: _buildDashboardStat('Konum', 'Çevrimdışı', Icons.location_off_rounded)),
-            ],
+          ListenableBuilder(
+            listenable: P2PConnectionService(),
+            builder: (context, _) => Row(
+              children: [
+                Expanded(child: _buildDashboardStat('Eğim', '${_tiltX.toStringAsFixed(1)}°', FontAwesomeIcons.arrowsUpDownLeftRight)),
+                Container(width: 1, height: 40, color: Colors.white10),
+                Expanded(child: _buildDashboardStat('Cihaz', '${P2PConnectionService().endpointMap.length}', Icons.hub_rounded)),
+                Container(width: 1, height: 40, color: Colors.white10),
+                Expanded(child: _buildDashboardStat('Batarya', '%$_batteryLevel', _batteryLevel > 20 ? Icons.battery_full_rounded : Icons.battery_alert_rounded)),
+              ],
+            ),
           ),
           const SizedBox(height: 24),
           GestureDetector(
@@ -234,11 +237,26 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
       childAspectRatio: 1.6,
       children: [
         _buildToolCard('FENER', _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded, Colors.orangeAccent, _toggleFlashlight),
+        _buildToolCard('ACİL DÜDÜK', Icons.air_rounded, Colors.blueAccent, _playWhistle),
         _buildToolCard('SİREN', Icons.warning_amber_rounded, Colors.purpleAccent, _playSiren),
-        _buildToolCard('SOS', Icons.emergency_share_rounded, Colors.redAccent, _makeSosCall),
-        _buildToolCard('PUSULA', Icons.explore_rounded, Colors.blueAccent, _goToCompass),
+        _buildToolCard('KONUM PAYLAŞ', Icons.share_location_rounded, Colors.greenAccent, _shareLocation),
       ],
     );
+  }
+
+  void _shareLocation() async {
+    try {
+      Position pos = await Geolocator.getCurrentPosition();
+      String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
+      P2PConnectionService().broadcast('📍 KONUMUM: $url');
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Konumunuz paylaşıldı')));
+    } catch (e) {}
+  }
+
+  void _playWhistle() async {
+    try {
+      await _audioPlayer.play(AssetSource('sounds/whistle.wav'));
+    } catch (e) {}
   }
 
   Widget _buildToolCard(String title, IconData icon, Color color, VoidCallback onTap) {

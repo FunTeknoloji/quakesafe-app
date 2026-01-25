@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_compass/flutter_compass.dart';
 import 'package:torch_light/torch_light.dart';
@@ -17,6 +18,8 @@ class ToolsScreen extends StatefulWidget {
 
 class _ToolsScreenState extends State<ToolsScreen> {
   bool _isFlashlightOn = false;
+  bool _isSosFlashlightOn = false;
+  Timer? _sosFlashTimer;
   final AudioPlayer _audioPlayer = AudioPlayer();
   double? _heading = 0;
   List<double>? _accelerometerValues;
@@ -43,6 +46,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 
   Future<void> _toggleFlashlight() async {
+    if (_isSosFlashlightOn) _toggleSosFlashlight();
     try {
       if (_isFlashlightOn) {
         await TorchLight.disableTorch();
@@ -54,6 +58,26 @@ class _ToolsScreenState extends State<ToolsScreen> {
       });
     } catch (e) {
       debugPrint('Flashlight error: $e');
+    }
+  }
+
+  void _toggleSosFlashlight() async {
+    if (_isFlashlightOn) await _toggleFlashlight();
+
+    if (_isSosFlashlightOn) {
+      _sosFlashTimer?.cancel();
+      await TorchLight.disableTorch();
+      setState(() => _isSosFlashlightOn = false);
+    } else {
+      setState(() => _isSosFlashlightOn = true);
+      bool state = false;
+      _sosFlashTimer = Timer.periodic(const Duration(milliseconds: 300), (timer) async {
+        state = !state;
+        try {
+          if (state) await TorchLight.enableTorch();
+          else await TorchLight.disableTorch();
+        } catch (e) {}
+      });
     }
   }
 
@@ -82,6 +106,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
 
   @override
   void dispose() {
+    _sosFlashTimer?.cancel();
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -238,27 +263,38 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 
   Widget _buildPrimaryActions() {
-    return Row(
+    return Column(
       children: [
-        Expanded(
-          child: _buildActionTile(
-            'FENER',
-            _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
-            _isFlashlightOn ? Colors.orangeAccent : Colors.white24,
-            _toggleFlashlight
-          ),
+        Row(
+          children: [
+            Expanded(
+              child: _buildActionTile(
+                'FENER',
+                _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded,
+                _isFlashlightOn ? Colors.orangeAccent : Colors.white24,
+                _toggleFlashlight
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildActionTile(
+                'FLAŞ SOS',
+                Icons.emergency_rounded,
+                _isSosFlashlightOn ? Colors.redAccent : Colors.white24,
+                _toggleSosFlashlight
+              ),
+            ),
+          ],
         ),
-        const SizedBox(width: 16),
-        Expanded(
-          child: _buildActionTile(
-            'SOS ÇAĞRISI',
-            Icons.phone_forwarded_rounded,
-            Colors.redAccent,
-            () async {
-              final Uri url = Uri.parse('tel:112');
-              if (await canLaunchUrl(url)) await launchUrl(url);
-            }
-          ),
+        const SizedBox(height: 16),
+        _buildActionTile(
+          '112 ACİL SERVİSİ ARA (SOS)',
+          Icons.phone_forwarded_rounded,
+          Colors.redAccent,
+          () async {
+            final Uri url = Uri.parse('tel:112');
+            if (await canLaunchUrl(url)) await launchUrl(url);
+          }
         ),
       ],
     );

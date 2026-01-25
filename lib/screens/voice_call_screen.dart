@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import '../services/voice_call_service.dart';
+import '../services/p2p_connection_service.dart';
 
 class VoiceCallScreen extends StatefulWidget {
   final String endpointId;
@@ -20,17 +21,20 @@ class VoiceCallScreen extends StatefulWidget {
   State<VoiceCallScreen> createState() => _VoiceCallScreenState();
 }
 
-class _VoiceCallScreenState extends State<VoiceCallScreen> {
+class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProviderStateMixin {
   bool _isMuted = false;
+  bool _isRecording = false;
   DateTime? _startTime;
   Timer? _timer;
   String _duration = '00:00';
+  late AnimationController _rippleController;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
     _startTimer();
+    _rippleController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
     widget.voiceCallService.startCall(widget.endpointId);
   }
 
@@ -47,6 +51,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _rippleController.dispose();
     super.dispose();
   }
 
@@ -79,15 +84,21 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   Widget _buildUserInfo() {
     return Column(
       children: [
-        Container(
-          width: 120,
-          height: 120,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: Colors.redAccent.withOpacity(0.1),
-            border: Border.all(color: Colors.redAccent.withOpacity(0.3), width: 2),
-          ),
-          child: const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent),
+        Stack(
+          alignment: Alignment.center,
+          children: [
+            if (!_isMuted) ...List.generate(3, (i) => _buildRippleEffect(i)),
+            Container(
+              width: 120,
+              height: 120,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.redAccent,
+                boxShadow: [BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 20)],
+              ),
+              child: const Icon(Icons.person_rounded, size: 60, color: Colors.white),
+            ),
+          ],
         ),
         const SizedBox(height: 24),
         Text(
@@ -128,27 +139,74 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   Widget _buildControls() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Column(
       children: [
-        _buildRoundButton(
-          icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-          color: _isMuted ? Colors.redAccent : Colors.white10,
-          onTap: () => setState(() => _isMuted = !_isMuted),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.hub_rounded, color: Colors.greenAccent, size: 14),
+            const SizedBox(width: 8),
+            Text(
+              '${P2PConnectionService().endpointMap.length} CİHAZ BAĞLI',
+              style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
+            ),
+          ],
         ),
-        _buildRoundButton(
-          icon: Icons.call_end_rounded,
-          color: Colors.red,
-          size: 80,
-          iconSize: 32,
-          onTap: _endCall,
-        ),
-        _buildRoundButton(
-          icon: Icons.volume_up_rounded,
-          color: Colors.white10,
-          onTap: () {},
+        const SizedBox(height: 40),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildRoundButton(
+              icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
+              color: _isMuted ? Colors.redAccent : Colors.white10,
+              onTap: () => setState(() => _isMuted = !_isMuted),
+            ),
+            _buildRoundButton(
+              icon: Icons.call_end_rounded,
+              color: Colors.red,
+              size: 80,
+              iconSize: 32,
+              onTap: _endCall,
+            ),
+            _buildRoundButton(
+              icon: _isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
+              color: _isRecording ? Colors.orangeAccent : Colors.white10,
+              onTap: _toggleRecording,
+            ),
+          ],
         ),
       ],
+    );
+  }
+
+  void _toggleRecording() async {
+    if (_isRecording) {
+      String? path = await widget.voiceCallService.stopRecording();
+      setState(() => _isRecording = false);
+      if (path != null) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Kayıt tamamlandı: $path')));
+      }
+    } else {
+      await widget.voiceCallService.startRecording();
+      setState(() => _isRecording = true);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ses kaydı başlatıldı')));
+    }
+  }
+
+  Widget _buildRippleEffect(int index) {
+    return AnimatedBuilder(
+      animation: _rippleController,
+      builder: (context, child) {
+        double progress = (_rippleController.value + (index / 3)) % 1;
+        return Container(
+          width: 120 + (progress * 100),
+          height: 120 + (progress * 100),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(color: Colors.redAccent.withOpacity(1 - progress), width: 2),
+          ),
+        );
+      },
     );
   }
 

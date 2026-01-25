@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:sound_stream/sound_stream.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:path_provider/path_provider.dart';
 
 class VoiceCallService {
   final AudioPlayer _audioPlayer = AudioPlayer();
@@ -12,8 +15,12 @@ class VoiceCallService {
   StreamSubscription? _recorderSubscription;
   bool _isCallActive = false;
 
+  bool _isRecording = false;
+  File? _recordFile;
+  IOSink? _recordSink;
+
   Future<void> init() async {
-    // Use a lower sample rate for better performance over P2P mesh
+    // Optimization: 16kHz Mono is enough for voice and reduces data rate
     await _recorder.initialize(sampleRate: 16000);
     await _player.initialize(sampleRate: 16000);
   }
@@ -27,11 +34,10 @@ class VoiceCallService {
 
     List<int> buffer = [];
     _recorderSubscription = _recorder.audioStream.listen((Uint8List data) {
-      // Send audio data in chunks.
-      // Small chunks cause high overhead in Nearby Connections.
-      // We group a few chunks together to reduce packet frequency.
+      if (_isRecording) _recordSink?.add(data);
+
       buffer.addAll(data);
-      if (buffer.length >= 4096) {
+      if (buffer.length >= 2048) { // Reduced chunk size for lower latency
         Nearby().sendBytesPayload(endpointId, Uint8List.fromList(buffer));
         buffer.clear();
       }
@@ -43,8 +49,69 @@ class VoiceCallService {
       _isCallActive = true;
       _player.start();
     }
+    if (_isRecording) _recordSink?.add(data);
     _player.writeChunk(data);
   }
+
+  Future<void> startRecording() async {
+    if (_isRecording) return;
+    final dir = await getApplicationDocumentsDirectory();
+    final path = '${dir.path}/call_rec_${DateTime.now().millisecondsSinceEpoch}.wav';
+    _recordFile = File(path);
+    _recordSink = _recordFile!.openWrite();
+
+    // Write placeholder WAV header (44 bytes)
+    _recordSink?.add(Uint8List(44));
+
+    _isRecording = true;
+  }
+
+  Future<String?> stopRecording() async {
+    if (!_isRecording) return null;
+    _isRecording = false;
+    await _recordSink?.flush();
+    await _recordSink?.close();
+    _recordSink = null;
+
+    // Patch WAV header with correct sizes
+    if (_recordFile != null) {
+      final bytes = await _recordFile!.readAsBytes();
+      final wavHeader = _createWavHeader(bytes.length - 44, 16000);
+      final completeWav = Uint8List.fromList(wavHeader + bytes.sublist(44));
+      await _recordFile!.writeAsBytes(completeWav);
+    }
+
+    return _recordFile?.path;
+  }
+
+  List<int> _createWavHeader(int dataLength, int sampleRate) {
+    final int fileSize = dataLength + 36;
+    final int byteRate = sampleRate * 2; // 16-bit mono
+
+    return [
+      // RIFF header
+      ...utf8.encode('RIFF'),
+      ..._int32ToBytes(fileSize),
+      ...utf8.encode('WAVE'),
+      // fmt subchunk
+      ...utf8.encode('fmt '),
+      ..._int32ToBytes(16), // Subchunk1Size
+      ..._int16ToBytes(1),  // AudioFormat (PCM)
+      ..._int16ToBytes(1),  // NumChannels (Mono)
+      ..._int32ToBytes(sampleRate),
+      ..._int32ToBytes(byteRate),
+      ..._int16ToBytes(2),  // BlockAlign
+      ..._int16ToBytes(16), // BitsPerSample
+      // data subchunk
+      ...utf8.encode('data'),
+      ..._int32ToBytes(dataLength),
+    ];
+  }
+
+  List<int> _int32ToBytes(int value) => Uint8List(4)..buffer.asByteData().setInt32(0, value, Endian.little);
+  List<int> _int16ToBytes(int value) => Uint8List(2)..buffer.asByteData().setInt16(0, value, Endian.little);
+
+  bool get isRecording => _isRecording;
 
   void stopCall() {
     _isCallActive = false;
@@ -52,6 +119,7 @@ class VoiceCallService {
     _player.stop();
     _recorderSubscription?.cancel();
     _recorderSubscription = null;
+    stopRecording();
   }
 
   Future<void> playAudioFile(String path) async {

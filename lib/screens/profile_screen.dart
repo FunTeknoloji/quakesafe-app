@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../services/profile_service.dart';
+import 'recordings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -99,6 +100,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 12),
               _buildInfoTile('Bağlantı Türü', 'P2P Mesh'),
               _buildInfoTile('Durum', 'Aktif'),
+              const SizedBox(height: 24),
+              _buildActionButton('SES KAYITLARI', Icons.mic_external_on_rounded, () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
+              }),
               const SizedBox(height: 60),
               SizedBox(
                 width: double.infinity,
@@ -134,11 +139,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: TextField(
         controller: controller,
         style: const TextStyle(color: Colors.white),
+        onChanged: (v) => _saveProfile(),
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: const TextStyle(color: Colors.white24),
           contentPadding: const EdgeInsets.all(20),
           border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildActionButton(String label, IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: Colors.redAccent.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.redAccent.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.redAccent, size: 20),
+            const SizedBox(width: 16),
+            Text(label, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+            const Spacer(),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 14),
+          ],
         ),
       ),
     );
