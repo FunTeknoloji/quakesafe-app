@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:vibration/vibration.dart';
 import 'package:audioplayers/audioplayers.dart';
+import '../services/notification_service.dart';
 
 class IncomingCallScreen extends StatefulWidget {
   final String callerName;
@@ -42,6 +43,7 @@ class _IncomingCallScreenState extends State<IncomingCallScreen> {
 
   @override
   void dispose() {
+    NotificationService.cancelNotification(widget.callerName.hashCode); // Use a consistent ID or just name hashCode
     _ringtonePlayer.stop();
     _ringtonePlayer.dispose();
     _vibrationTimer?.cancel();

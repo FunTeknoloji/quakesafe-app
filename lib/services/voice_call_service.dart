@@ -4,10 +4,17 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'package:sound_stream/sound_stream.dart';
 import 'package:nearby_connections/nearby_connections.dart';
+import 'p2p_connection_service.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:audio_session/audio_session.dart' as session;
+import 'package:flutter/foundation.dart';
 
 class VoiceCallService {
+  static final VoiceCallService _instance = VoiceCallService._internal();
+  factory VoiceCallService() => _instance;
+  VoiceCallService._internal();
+
   final AudioPlayer _audioPlayer = AudioPlayer();
   final RecorderStream _recorder = RecorderStream();
   final PlayerStream _player = PlayerStream();
@@ -15,6 +22,8 @@ class VoiceCallService {
   StreamSubscription? _recorderSubscription;
   bool _isCallActive = false;
   bool _isMuted = false;
+  bool _isRemoteMuted = false;
+  bool _isSpeakerPhone = true;
 
   bool _isRecording = false;
   File? _recordFile;
@@ -24,10 +33,34 @@ class VoiceCallService {
     _isMuted = mute;
   }
 
+  void toggleRemoteMute(bool mute) {
+    _isRemoteMuted = mute;
+    if (mute) {
+      _player.stop();
+    } else if (_isCallActive) {
+      _player.start();
+    }
+  }
+
+  Future<void> toggleSpeaker(bool speakerOn) async {
+    _isSpeakerPhone = speakerOn;
+    final audioSession = await session.AudioSession.instance;
+    await audioSession.configure(session.AudioSessionConfiguration(
+      avAudioSessionCategory: speakerOn ? session.AVAudioSessionCategory.playAndRecord : session.AVAudioSessionCategory.playAndRecord,
+      avAudioSessionCategoryOptions: speakerOn ? session.AVAudioSessionCategoryOptions.defaultToSpeaker : session.AVAudioSessionCategoryOptions.none,
+      avAudioSessionMode: session.AVAudioSessionMode.voiceChat,
+      androidAudioAttributes: session.AndroidAudioAttributes(
+        contentType: session.AndroidAudioContentType.speech,
+        usage: session.AndroidAudioUsage.voiceCommunication,
+      ),
+      androidAudioFocusGainType: session.AndroidAudioFocusGainType.gain,
+    ));
+  }
+
   Future<void> init() async {
-    // Optimization: 16kHz Mono is enough for voice and reduces data rate
     await _recorder.initialize(sampleRate: 16000);
     await _player.initialize(sampleRate: 16000);
+    await toggleSpeaker(true);
   }
 
   void startCall(String endpointId) {
@@ -39,15 +72,14 @@ class VoiceCallService {
 
     List<int> buffer = [];
     _recorderSubscription = _recorder.audioStream.listen((Uint8List data) {
-      if (_isMuted) return; // Silent if muted
+      if (_isMuted) return;
 
       if (_isRecording) _recordSink?.add(data);
 
-      // Simple Noise Gate: ignore very low amplitude chunks
-      // Increasing threshold to 15 to reduce background static/parasite
       bool hasSound = false;
+      // High noise gate threshold to prevent echo loop
       for (int i = 0; i < data.length; i+=2) {
-        if (data[i] > 15 || data[i] < -15) { // Absolute value check
+        if (data[i].abs() > 30) {
           hasSound = true;
           break;
         }
@@ -56,8 +88,16 @@ class VoiceCallService {
       if (!hasSound) return;
 
       buffer.addAll(data);
-      if (buffer.length >= 1024) { // Even smaller for faster delivery
-        Nearby().sendBytesPayload(endpointId, Uint8List.fromList(buffer));
+      if (buffer.length >= 1024) {
+        Uint8List payload = Uint8List.fromList(buffer);
+        // Broadcast to all or target
+        if (endpointId == 'all') {
+          for (var eid in P2PConnectionService().endpointMap.keys) {
+             Nearby().sendBytesPayload(eid, payload);
+          }
+        } else {
+          Nearby().sendBytesPayload(endpointId, payload);
+        }
         buffer.clear();
       }
     });
@@ -66,10 +106,12 @@ class VoiceCallService {
   void receiveAudio(Uint8List data) {
     if (!_isCallActive) {
       _isCallActive = true;
-      _player.start();
+      if (!_isRemoteMuted) _player.start();
     }
     if (_isRecording) _recordSink?.add(data);
-    _player.writeChunk(data);
+    if (!_isRemoteMuted) {
+      _player.writeChunk(data);
+    }
   }
 
   Future<void> startRecording() async {

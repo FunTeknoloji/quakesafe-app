@@ -5,6 +5,7 @@ import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'dart:async';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() async {
   runZonedGuarded(() async {
@@ -78,8 +79,14 @@ class _MainGateState extends State<MainGate> {
         debugPrint('BG Init failed: $e');
       }
 
+      // Check if profile is complete
+      final prefs = await SharedPreferences.getInstance();
+      bool profileComplete = prefs.getString('username') != null &&
+                            prefs.getString('emergency_contact_number') != null;
+
       if (mounted) {
         setState(() {
+          _forceProfile = !profileComplete;
           _isInitializing = false;
         });
       }
@@ -121,6 +128,8 @@ class _MainGateState extends State<MainGate> {
     }
   }
 
+  bool _forceProfile = false;
+
   @override
   Widget build(BuildContext context) {
     if (_isInitializing) {
@@ -146,6 +155,6 @@ class _MainGateState extends State<MainGate> {
         ),
       );
     }
-    return const OfflineMainWrapper();
+    return OfflineMainWrapper(initialIndex: _forceProfile ? 4 : 0);
   }
 }

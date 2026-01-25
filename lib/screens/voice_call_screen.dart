@@ -21,20 +21,20 @@ class VoiceCallScreen extends StatefulWidget {
   State<VoiceCallScreen> createState() => _VoiceCallScreenState();
 }
 
-class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProviderStateMixin {
+class _VoiceCallScreenState extends State<VoiceCallScreen> {
   bool _isMuted = false;
+  bool _isRemoteMuted = false;
+  bool _isSpeakerOn = true;
   bool _isRecording = false;
   DateTime? _startTime;
   Timer? _timer;
   String _duration = '00:00';
-  late AnimationController _rippleController;
 
   @override
   void initState() {
     super.initState();
     _startTime = DateTime.now();
     _startTimer();
-    _rippleController = AnimationController(vsync: this, duration: const Duration(seconds: 2))..repeat();
     widget.voiceCallService.startCall(widget.endpointId);
   }
 
@@ -51,7 +51,6 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
   @override
   void dispose() {
     _timer?.cancel();
-    _rippleController.dispose();
     super.dispose();
   }
 
@@ -82,35 +81,56 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
   }
 
   Widget _buildUserInfo() {
+    final endpoints = P2PConnectionService().endpointMap;
     return Column(
       children: [
-        Stack(
-          alignment: Alignment.center,
-          children: [
-            if (!_isMuted) ...List.generate(3, (i) => _buildRippleEffect(i)),
-            Container(
-              width: 120,
-              height: 120,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: Colors.redAccent,
-                boxShadow: [BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 20)],
-              ),
-              child: const Icon(Icons.person_rounded, size: 60, color: Colors.white),
-            ),
-          ],
+        const Text(
+          'KATILIMCILAR',
+          style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
+        ),
+        const SizedBox(height: 20),
+        SizedBox(
+          height: 120,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            shrinkWrap: true,
+            children: [
+              _buildParticipantAvatar('Ben', isMe: true),
+              ...endpoints.entries.map((e) => _buildParticipantAvatar(e.value.endpointName)),
+            ],
+          ),
         ),
         const SizedBox(height: 24),
         Text(
-          widget.endpointName,
-          style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
-        ),
-        const SizedBox(height: 8),
-        Text(
           _duration,
-          style: const TextStyle(color: Colors.white54, fontSize: 16, letterSpacing: 2),
+          style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
         ),
       ],
+    );
+  }
+
+  Widget _buildParticipantAvatar(String name, {bool isMe = false}) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        children: [
+          Container(
+            width: 80,
+            height: 80,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: isMe ? Colors.blueAccent.withOpacity(0.1) : Colors.redAccent.withOpacity(0.1),
+              border: Border.all(color: isMe ? Colors.blueAccent : Colors.redAccent, width: 2),
+            ),
+            child: Icon(Icons.person_rounded, size: 40, color: isMe ? Colors.blueAccent : Colors.redAccent),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            name,
+            style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+          ),
+        ],
+      ),
     );
   }
 
@@ -147,18 +167,45 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
             const Icon(Icons.hub_rounded, color: Colors.greenAccent, size: 14),
             const SizedBox(width: 8),
             Text(
-              '${P2PConnectionService().endpointMap.length} CİHAZ BAĞLI | 16KHZ HQ',
+              '${P2PConnectionService().endpointMap.length + 1} KATILIMCI | HQ AUDIO',
               style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ],
         ),
-        const SizedBox(height: 40),
+        const SizedBox(height: 32),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            _buildRoundButton(
+              icon: _isSpeakerOn ? Icons.volume_up_rounded : Icons.hearing_rounded,
+              color: _isSpeakerOn ? Colors.white10 : Colors.blueAccent,
+              label: _isSpeakerOn ? 'HOPARLÖR' : 'AHİZE',
+              onTap: () {
+                bool newState = !_isSpeakerOn;
+                setState(() => _isSpeakerOn = newState);
+                widget.voiceCallService.toggleSpeaker(newState);
+              },
+            ),
+            _buildRoundButton(
+              icon: _isRemoteMuted ? Icons.volume_off_rounded : Icons.volume_down_rounded,
+              color: _isRemoteMuted ? Colors.orangeAccent : Colors.white10,
+              label: 'DİĞERLERİNİ SUSTUR',
+              onTap: () {
+                bool newState = !_isRemoteMuted;
+                setState(() => _isRemoteMuted = newState);
+                widget.voiceCallService.toggleRemoteMute(newState);
+              },
+            ),
+          ],
+        ),
+        const SizedBox(height: 32),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
             _buildRoundButton(
               icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
               color: _isMuted ? Colors.redAccent : Colors.white10,
+              label: 'MUTE',
               onTap: () {
                 bool newMute = !_isMuted;
                 setState(() => _isMuted = newMute);
@@ -175,6 +222,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
             _buildRoundButton(
               icon: _isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,
               color: _isRecording ? Colors.orangeAccent : Colors.white10,
+              label: 'KAYDET',
               onTap: _toggleRecording,
             ),
           ],
@@ -197,32 +245,23 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
     }
   }
 
-  Widget _buildRippleEffect(int index) {
-    return AnimatedBuilder(
-      animation: _rippleController,
-      builder: (context, child) {
-        double progress = (_rippleController.value + (index / 3)) % 1;
-        return Container(
-          width: 120 + (progress * 100),
-          height: 120 + (progress * 100),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(color: Colors.redAccent.withOpacity(1 - progress), width: 2),
+  Widget _buildRoundButton({required IconData icon, required Color color, double size = 64, double iconSize = 24, String? label, required VoidCallback onTap}) {
+    return Column(
+      children: [
+        GestureDetector(
+          onTap: onTap,
+          child: Container(
+            width: size,
+            height: size,
+            decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+            child: Icon(icon, color: Colors.white, size: iconSize),
           ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRoundButton({required IconData icon, required Color color, double size = 64, double iconSize = 24, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(shape: BoxShape.circle, color: color),
-        child: Icon(icon, color: Colors.white, size: iconSize),
-      ),
+        ),
+        if (label != null) ...[
+          const SizedBox(height: 8),
+          Text(label, style: const TextStyle(color: Colors.white38, fontSize: 8, fontWeight: FontWeight.bold)),
+        ]
+      ],
     );
   }
 }

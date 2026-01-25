@@ -260,11 +260,9 @@ class _ChatScreenState extends State<ChatScreen> {
       return;
     }
 
-    if (_p2p.endpointMap.length == 1) {
-      _requestCall(_p2p.endpointMap.keys.first);
-    } else {
-      _showDevicePicker();
-    }
+    // Call everyone in the mesh
+    _p2p.sendProtocolMessage('all', {'type': 'VOICE_SIG', 'cmd': 'START'});
+    _initiateCall('all');
   }
 
   void _showDevicePicker() {

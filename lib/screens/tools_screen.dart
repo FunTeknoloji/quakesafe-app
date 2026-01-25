@@ -12,6 +12,7 @@ import 'tools/notepad_screen.dart';
 import 'tools/timer_screen.dart';
 import 'tools/calendar_screen.dart';
 import 'tools/light_mode_screen.dart';
+import 'tools/mesh_settings_screen.dart';
 
 class ToolsScreen extends StatefulWidget {
   const ToolsScreen({super.key});
@@ -458,6 +459,9 @@ class _ToolsScreenState extends State<ToolsScreen> {
             }),
             _buildSmallTool('POLİS IŞIĞI', Icons.local_police_rounded, Colors.blue, () {
               Navigator.push(context, MaterialPageRoute(builder: (context) => const LightModeScreen(isPolice: true)));
+            }),
+            _buildSmallTool('MESH AYARLARI', Icons.hub_rounded, Colors.redAccent, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const MeshSettingsScreen()));
             }),
           ],
         ),

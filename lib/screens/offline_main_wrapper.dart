@@ -8,9 +8,11 @@ import 'chat_screen.dart';
 import 'tools_screen.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
+import '../services/notification_service.dart';
 
 class OfflineMainWrapper extends StatefulWidget {
-  const OfflineMainWrapper({super.key});
+  final int initialIndex;
+  const OfflineMainWrapper({super.key, this.initialIndex = 0});
 
   static _OfflineMainWrapperState? of(BuildContext context) =>
       context.findAncestorStateOfType<_OfflineMainWrapperState>();
@@ -20,13 +22,15 @@ class OfflineMainWrapper extends StatefulWidget {
 }
 
 class _OfflineMainWrapperState extends State<OfflineMainWrapper> with WidgetsBindingObserver {
-  int _selectedIndex = 0;
+  late int _selectedIndex;
   Key _chatKey = UniqueKey();
 
   @override
   void initState() {
     super.initState();
+    _selectedIndex = widget.initialIndex;
     WidgetsBinding.instance.addObserver(this);
+    NotificationService.isForeground = true;
     if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       FlutterBackgroundService().invoke("setForeground");
     }
@@ -44,8 +48,10 @@ class _OfflineMainWrapperState extends State<OfflineMainWrapper> with WidgetsBin
     if (!(Platform.isAndroid || Platform.isIOS)) return;
 
     if (state == AppLifecycleState.paused) {
+      NotificationService.isForeground = false;
       FlutterBackgroundService().invoke("setBackground");
     } else if (state == AppLifecycleState.resumed) {
+      NotificationService.isForeground = true;
       FlutterBackgroundService().invoke("setForeground");
     }
   }

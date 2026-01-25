@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
 import 'notification_service.dart';
 
@@ -14,7 +15,7 @@ class P2PConnectionService extends ChangeNotifier {
     _startQueueProcessor();
   }
 
-  final Strategy strategy = Strategy.P2P_CLUSTER;
+  Strategy strategy = Strategy.P2P_CLUSTER;
   Map<String, ConnectionInfo> endpointMap = {};
   Map<String, int> connectionQuality = {}; // Stability score
   bool isAdvertising = false;
@@ -234,6 +235,17 @@ class P2PConnectionService extends ChangeNotifier {
     _currentUserName = userName;
     _onInitCallback = onInit;
 
+    // Load strategy from settings
+    final prefs = await SharedPreferences.getInstance();
+    String stratStr = prefs.getString('mesh_strategy') ?? 'CLUSTER';
+    if (stratStr == 'STAR') {
+      strategy = Strategy.P2P_STAR;
+    } else if (stratStr == 'P2P') {
+      strategy = Strategy.P2P_POINT_TO_POINT;
+    } else {
+      strategy = Strategy.P2P_CLUSTER;
+    }
+
     await stopAll();
 
     await startAdvertising(userName, onInit);
@@ -329,7 +341,14 @@ class P2PConnectionService extends ChangeNotifier {
 
   Future<void> sendProtocolMessage(String targetId, Map<String, dynamic> data) async {
     String jsonStr = jsonEncode(data);
-    await Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode(jsonStr)));
+    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonStr));
+    if (targetId == 'all') {
+      for (var eid in endpointMap.keys) {
+        await Nearby().sendBytesPayload(eid, bytes);
+      }
+    } else {
+      await Nearby().sendBytesPayload(targetId, bytes);
+    }
   }
 
   Future<void> stopAll() async {

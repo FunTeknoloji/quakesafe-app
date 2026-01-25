@@ -20,8 +20,8 @@ class BackgroundService {
         autoStart: true,
         isForegroundMode: true,
         notificationChannelId: 'quakesafe_bg_channel',
-        initialNotificationTitle: 'QuakeSafe Arka Plan',
-        initialNotificationContent: 'Acil durum takibi aktif.',
+        initialNotificationTitle: 'QuakeSafe Koruma Modu',
+        initialNotificationContent: 'Mesh ağı ve acil durum takibi aktif.',
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
@@ -79,13 +79,20 @@ class BackgroundService {
     final bool notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
     final String userName = prefs.getString('username') ?? 'User';
 
-    void startNearby() {
+    void startNearby() async {
       debugPrint('Background startNearby called. isForeground: $isForeground');
       if (isForeground) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      String stratStr = prefs.getString('mesh_strategy') ?? 'CLUSTER';
+      Strategy strategy = Strategy.P2P_CLUSTER;
+      if (stratStr == 'STAR') strategy = Strategy.P2P_STAR;
+      if (stratStr == 'P2P') strategy = Strategy.P2P_POINT_TO_POINT;
+
       try {
         Nearby().startDiscovery(
           userName,
-          Strategy.P2P_CLUSTER,
+          strategy,
           onEndpointFound: (id, name, serviceId) {
             Nearby().requestConnection(
               userName,
@@ -100,7 +107,7 @@ class BackgroundService {
                         if (str.startsWith('{')) {
                           var data = jsonDecode(str);
                           if (data['type'] == 'MSG') {
-                            if (notificationsEnabled) {
+                            if (notificationsEnabled && !isForeground) {
                               NotificationService.showNotification(
                                 id: data['id'].hashCode,
                                 title: 'Yeni Mesaj: $name',
@@ -135,7 +142,7 @@ class BackgroundService {
 
         Nearby().startAdvertising(
           userName,
-          Strategy.P2P_CLUSTER,
+          strategy,
           onConnectionInitiated: (id, info) {
             Nearby().acceptConnection(
               id,
@@ -146,7 +153,7 @@ class BackgroundService {
                         if (str.startsWith('{')) {
                           var data = jsonDecode(str);
                           if (data['type'] == 'MSG') {
-                            if (notificationsEnabled) {
+                            if (notificationsEnabled && !isForeground) {
                               NotificationService.showNotification(
                                 id: data['id'].hashCode,
                                 title: 'Yeni Mesaj: ${info.endpointName}',

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
+  static bool isForeground = true;
 
   static Future<void> init() async {
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -21,7 +22,7 @@ class NotificationService {
       'quakesafe_bg_channel',
       'QuakeSafe Arka Plan Servisi',
       description: 'Mesh ağı ve acil durum takibi için kullanılır.',
-      importance: Importance.low,
+      importance: Importance.min,
     );
 
     await _notificationsPlugin
@@ -51,12 +52,18 @@ class NotificationService {
       android: androidPlatformChannelSpecifics,
     );
 
+    if (isForeground && channelId != 'quakesafe_call_channel') return;
+
     await _notificationsPlugin.show(
       id,
       title,
       body,
       platformChannelSpecifics,
     );
+  }
+
+  static Future<void> cancelNotification(int id) async {
+    await _notificationsPlugin.cancel(id);
   }
 
   static Future<void> showCallNotification({

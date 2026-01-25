@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -20,6 +22,25 @@ class _ContactsScreenState extends State<ContactsScreen> {
   void initState() {
     super.initState();
     _fetchContacts();
+  }
+
+  Future<void> _sendSOS(Contact contact) async {
+    if (contact.phones.isEmpty) return;
+    final number = contact.phones.first.number;
+
+    final prefs = await SharedPreferences.getInstance();
+    final customMsg = prefs.getString('custom_sos_message') ?? 'ACİL DURUM! Yardıma ihtiyacım var. Konumum:';
+
+    try {
+      Position pos = await Geolocator.getCurrentPosition();
+      String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
+      final Uri uri = Uri.parse('sms:$number?body=$customMsg $url');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SMS hazırlanamadı')));
+    }
   }
 
   Future<void> _fetchContacts() async {
@@ -143,14 +164,23 @@ class _ContactsScreenState extends State<ContactsScreen> {
             ),
             title: Text(c.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'No Number', style: const TextStyle(color: Colors.white38)),
-            trailing: IconButton(
-              onPressed: () async {
-                if (c.phones.isNotEmpty) {
-                  final Uri url = Uri.parse('tel:${c.phones.first.number}');
-                  if (await canLaunchUrl(url)) await launchUrl(url);
-                }
-              },
-              icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 20),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  onPressed: () => _sendSOS(c),
+                  icon: const Icon(Icons.emergency_rounded, color: Colors.redAccent, size: 20),
+                ),
+                IconButton(
+                  onPressed: () async {
+                    if (c.phones.isNotEmpty) {
+                      final Uri url = Uri.parse('tel:${c.phones.first.number}');
+                      if (await canLaunchUrl(url)) await launchUrl(url);
+                    }
+                  },
+                  icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 20),
+                ),
+              ],
             ),
           ),
         );
