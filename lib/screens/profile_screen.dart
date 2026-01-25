@@ -28,7 +28,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     await ProfileService.setUsername(_nameController.text.trim());
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profil güncellendi')),
+        SnackBar(
+          content: const Text('Profil güncellendi'),
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        ),
       );
     }
   }
@@ -38,41 +43,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24.0),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              const Text('Profil Ayarları', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
-              const SizedBox(height: 30),
-              TextField(
-                controller: _nameController,
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  labelText: 'Görünen İsim',
-                  labelStyle: const TextStyle(color: Colors.white70),
-                  enabledBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.white24), borderRadius: BorderRadius.circular(12)),
-                  focusedBorder: OutlineInputBorder(borderSide: const BorderSide(color: Colors.redAccent), borderRadius: BorderRadius.circular(12)),
-                  filled: true,
-                  fillColor: Colors.white10,
+              const SizedBox(height: 60),
+              Stack(
+                alignment: Alignment.bottomRight,
+                children: [
+                  Container(
+                    width: 120,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.redAccent, Colors.orangeAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.redAccent.withOpacity(0.4),
+                          blurRadius: 20,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Center(
+                      child: Icon(Icons.person_rounded, size: 60, color: Colors.white),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(Icons.edit_rounded, size: 16, color: Colors.black),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 40),
+              Text(
+                'KİMLİK BİLGİLERİ',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white54,
+                  letterSpacing: 1.2,
                 ),
               ),
               const SizedBox(height: 20),
+              Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.05),
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: Colors.white.withOpacity(0.1)),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                child: TextField(
+                  controller: _nameController,
+                  style: const TextStyle(color: Colors.white, fontSize: 18),
+                  decoration: InputDecoration(
+                    hintText: 'Adınız ve Soyadınız',
+                    hintStyle: TextStyle(color: Colors.white24),
+                    border: InputBorder.none,
+                    icon: Icon(Icons.badge_rounded, color: Colors.redAccent),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 40),
               SizedBox(
                 width: double.infinity,
+                height: 60,
                 child: ElevatedButton(
                   onPressed: _saveName,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                    elevation: 0,
                   ),
-                  child: const Text('Kaydet', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+                  child: const Text(
+                    'PROFİLİ KAYDET',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1),
+                  ),
                 ),
               ),
-              const Spacer(),
-              const Center(
-                child: Text('QuakeSafe v1.0.0', style: TextStyle(color: Colors.white24)),
+              const SizedBox(height: 20),
+              Text(
+                'Bu isim çevrimdışı sohbette diğer cihazlara görünecektir.',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.white38, fontSize: 13),
               ),
             ],
           ),
