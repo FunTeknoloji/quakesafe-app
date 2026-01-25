@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+import 'dart:async';
 import 'offline_home_screen.dart';
 import 'chat_screen.dart';
+import '../services/app_state_service.dart';
 import 'tools_screen.dart';
 import 'contacts_screen.dart';
 import 'profile_screen.dart';
@@ -14,11 +17,60 @@ class OfflineMainWrapper extends StatefulWidget {
 
 class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
   int _selectedIndex = 0;
+  late StreamSubscription<List<ConnectivityResult>> _connectivitySubscription;
+  final Connectivity _connectivity = Connectivity();
+  bool _promptShown = false;
 
   @override
   void initState() {
     super.initState();
     _checkHardware();
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(_handleConnectivityChange);
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription.cancel();
+    super.dispose();
+  }
+
+  void _handleConnectivityChange(List<ConnectivityResult> result) {
+    if (result.isNotEmpty && result.first != ConnectivityResult.none && !_promptShown) {
+      _promptShown = true;
+      _showOnlineSwitchPrompt();
+    } else if (result.isEmpty || result.first == ConnectivityResult.none) {
+      _promptShown = false;
+    }
+  }
+
+  void _showOnlineSwitchPrompt() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.grey[900],
+        title: const Text('İnternet Mevcut', style: TextStyle(color: Colors.white)),
+        content: const Text('İnternet ağı tespit edildi. Online moda geçmek istiyor musunuz?', style: TextStyle(color: Colors.white70)),
+        actions: [
+          TextButton(
+            onPressed: () {
+              _promptShown = false;
+              AppStateService.allowAutoSwitch.value = false;
+              Navigator.pop(context);
+            },
+            child: const Text('Hayır'),
+          ),
+          TextButton(
+            onPressed: () {
+              AppStateService.allowAutoSwitch.value = true;
+              _promptShown = false;
+              Navigator.pop(context);
+            },
+            child: const Text('Evet', style: TextStyle(color: Colors.greenAccent)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _checkHardware() async {

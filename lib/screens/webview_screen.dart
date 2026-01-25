@@ -2,6 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:dio/dio.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:open_filex/open_filex.dart';
+import 'dart:io';
 
 class WebViewScreen extends StatefulWidget {
   const WebViewScreen({super.key});
@@ -32,6 +36,16 @@ class _WebViewScreenState extends State<WebViewScreen> {
           onPageFinished: (String url) {},
           onWebResourceError: (WebResourceError error) {},
           onNavigationRequest: (NavigationRequest request) {
+            final url = request.url.toLowerCase();
+            if (url.contains('.pdf') ||
+                url.contains('.zip') ||
+                url.contains('.jpg') ||
+                url.contains('.png') ||
+                url.contains('.apk') ||
+                url.contains('download')) {
+              _downloadFile(request.url);
+              return NavigationDecision.prevent;
+            }
             return NavigationDecision.navigate;
           },
         ),
@@ -69,21 +83,86 @@ class _WebViewScreenState extends State<WebViewScreen> {
     }
   }
 
+  Future<void> _downloadFile(String url) async {
+    try {
+      final dio = Dio();
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName = url.split('/').last.split('?').first;
+      final savePath = '${dir.path}/$fileName';
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İndiriliyor: $fileName')),
+      );
+
+      await dio.download(url, savePath);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('İndirme tamamlandı: $fileName'),
+          action: SnackBarAction(
+            label: 'Aç',
+            onPressed: () {
+              OpenFilex.open(savePath);
+            },
+          ),
+        ),
+      );
+    } catch (e) {
+      debugPrint('Download error: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('İndirme hatası: $e')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Stack(
-          children: [
-            WebViewWidget(controller: _controller),
-            if (_loadingProgress < 100)
-              LinearProgressIndicator(
-                value: _loadingProgress / 100.0,
-                backgroundColor: Colors.black,
-                color: Colors.redAccent,
-              ),
-          ],
+    return PopScope(
+      canPop: false,
+      onPopInvoked: (didPop) async {
+        if (didPop) return;
+        if (await _controller.canGoBack()) {
+          _controller.goBack();
+        } else {
+          // If no history, we can't really "go back" more.
+          // Maybe show a dialog or just allow exit?
+          // The user said "don't close app directly".
+          // So let's stay here or maybe show a prompt.
+          final exit = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              backgroundColor: Colors.grey[900],
+              title: const Text('Çıkış', style: TextStyle(color: Colors.white)),
+              content: const Text('Uygulamadan çıkmak istiyor musunuz?', style: TextStyle(color: Colors.white70)),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Hayır')),
+                TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Evet', style: TextStyle(color: Colors.redAccent))),
+              ],
+            ),
+          );
+          if (exit == true) {
+            // How to close app in Flutter?
+            // SystemNavigator.pop() or just allow pop from this screen if it's the root.
+            if (context.mounted) {
+              Navigator.of(context).pop();
+            }
+          }
+        }
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: SafeArea(
+          child: Stack(
+            children: [
+              WebViewWidget(controller: _controller),
+              if (_loadingProgress < 100)
+                LinearProgressIndicator(
+                  value: _loadingProgress / 100.0,
+                  backgroundColor: Colors.black,
+                  color: Colors.redAccent,
+                ),
+            ],
+          ),
         ),
       ),
     );

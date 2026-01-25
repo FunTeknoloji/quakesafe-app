@@ -5,6 +5,7 @@ import 'screens/webview_screen.dart';
 import 'screens/offline_main_wrapper.dart';
 import 'services/notification_service.dart';
 import 'services/sync_service.dart';
+import 'services/app_state_service.dart';
 import 'dart:async';
 
 void main() async {
@@ -101,6 +102,8 @@ class _MainGateState extends State<MainGate> {
       Permission.microphone,
       Permission.contacts,
       Permission.storage,
+      Permission.notification,
+      Permission.phone,
       Permission.bluetoothScan,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
@@ -110,10 +113,15 @@ class _MainGateState extends State<MainGate> {
 
   @override
   Widget build(BuildContext context) {
-    if (_connectionStatus == ConnectivityResult.none) {
-      return const OfflineMainWrapper();
-    } else {
-      return const WebViewScreen();
-    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: AppStateService.allowAutoSwitch,
+      builder: (context, allowSwitch, child) {
+        if (_connectionStatus == ConnectivityResult.none || !allowSwitch) {
+          return const OfflineMainWrapper();
+        } else {
+          return const WebViewScreen();
+        }
+      },
+    );
   }
 }

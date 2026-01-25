@@ -60,17 +60,63 @@ class _ToolsScreenState extends State<ToolsScreen> {
     }
   }
 
-  void _playEmergencySound() async {
+  void _playSound(String fileName) async {
     try {
-      await _audioPlayer.play(AssetSource('sounds/siren.mp3'));
+      await _audioPlayer.stop();
+      await _audioPlayer.play(AssetSource('sounds/$fileName'));
     } catch (e) {
-      debugPrint('Siren sound error: $e');
+      debugPrint('Sound error: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Siren sesi dosyası bulunamadı. Lütfen assets/sounds/siren.mp3 dosyasını ekleyin.')),
+          SnackBar(content: Text('$fileName bulunamadı. Lütfen assets/sounds/$fileName dosyasını ekleyin.')),
         );
       }
     }
+  }
+
+  void _showFirstAid() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: const BoxDecoration(
+          color: Color(0xFF121212),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: DraggableScrollableSheet(
+          expand: false,
+          builder: (context, scrollController) => SingleChildScrollView(
+            controller: scrollController,
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('🚑 Temel İlk Yardım Bilgileri', style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.greenAccent)),
+                const Divider(color: Colors.white24),
+                _buildInfoItem('Kanamalar', 'Temiz bir bezle baskı uygulayın. Uzuv yükseltin.'),
+                _buildInfoItem('Kırıklar', 'Hareketsiz tutun, sabitleyin (atellleme).'),
+                _buildInfoItem('Yanıklar', 'Soğuk (buz değil) su altında 15-20 dk tutun.'),
+                _buildInfoItem('Bilinç Kaybı', 'Yan yatış pozisyonuna (koma pozisyonu) getirin.'),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoItem(String title, String desc) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.white)),
+          Text(desc, style: const TextStyle(color: Colors.white70)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -153,11 +199,25 @@ class _ToolsScreenState extends State<ToolsScreen> {
                 ],
               ),
               const SizedBox(height: 10),
+              const SizedBox(height: 20),
+              const Text('Acil Durum Sesleri', style: TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _buildToolButton('Siren', Icons.warning, () => _playSound('siren.mp3'), Colors.purple),
+                  _buildToolButton('Düdük', Icons.music_note, () => _playSound('whistle.mp3'), Colors.blue),
+                  _buildToolButton('Tiz Ses', Icons.notifications_active, () => _playSound('high_pitch.mp3'), Colors.orange),
+                  _buildToolButton('Yüksek Bip', Icons.error, () => _playSound('beep.mp3'), Colors.indigo),
+                ],
+              ),
+              const SizedBox(height: 20),
               _buildToolButton(
-                'Acil Durum Sesi Çal',
-                Icons.volume_up,
-                _playEmergencySound,
-                Colors.purple,
+                'İlk Yardım Rehberi',
+                Icons.medical_services,
+                _showFirstAid,
+                Colors.teal,
               ),
             ],
           ),

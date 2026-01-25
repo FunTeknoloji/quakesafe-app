@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:record/record.dart';
+import 'package:audioplayers/audioplayers.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
@@ -22,6 +25,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Map<String, ConnectionInfo> endpointMap = {};
   List<ChatMessage> messages = [];
   final TextEditingController _textController = TextEditingController();
+  final AudioRecorder _recorder = AudioRecorder();
+  final AudioPlayer _audioPlayer = AudioPlayer();
+  bool _isRecording = false;
 
   @override
   void initState() {
@@ -121,7 +127,7 @@ class _ChatScreenState extends State<ChatScreen> {
       id,
       onPayLoadRecieved: (id, payload) async {
         if (payload.type == PayloadType.BYTES) {
-          String str = String.fromCharCodes(payload.bytes!);
+          String str = utf8.decode(payload.bytes!);
           String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
           await DatabaseService.insertMessage(sender, str, false);
           setState(() {
@@ -129,6 +135,18 @@ class _ChatScreenState extends State<ChatScreen> {
               sender: sender,
               text: str,
               isMe: false,
+            ));
+          });
+        } else if (payload.type == PayloadType.FILE) {
+          // Handle voice message file
+          String path = payload.filePath!;
+          setState(() {
+            messages.add(ChatMessage(
+              sender: endpointMap[id]?.endpointName ?? 'Bilinmeyen',
+              text: '[Sesli Mesaj]',
+              isMe: false,
+              isAudio: true,
+              audioPath: path,
             ));
           });
         }
@@ -140,7 +158,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
 
-    Uint8List bytes = Uint8List.fromList(text.codeUnits);
+    Uint8List bytes = Uint8List.fromList(utf8.encode(text));
     for (String endpointId in endpointMap.keys) {
       Nearby().sendBytesPayload(endpointId, bytes);
     }
@@ -154,6 +172,50 @@ class _ChatScreenState extends State<ChatScreen> {
       ));
       _textController.clear();
     });
+  }
+
+  Future<void> _startVoiceCall() async {
+    if (await _recorder.hasPermission()) {
+      final directory = await getApplicationDocumentsDirectory();
+      final path = '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      await _recorder.start(const RecordConfig(), path: path);
+      setState(() {
+        _isRecording = true;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Ses kaydediliyor...')),
+      );
+    }
+  }
+
+  Future<void> _stopAndSendVoiceCall() async {
+    final path = await _recorder.stop();
+    setState(() {
+      _isRecording = false;
+    });
+
+    if (path != null) {
+      File file = File(path);
+      for (String endpointId in endpointMap.keys) {
+        Nearby().sendFilePayload(endpointId, file.path);
+      }
+
+      setState(() {
+        messages.add(ChatMessage(
+          sender: 'Ben ($userName)',
+          text: '[Sesli Mesaj]',
+          isMe: true,
+          isAudio: true,
+          audioPath: path,
+        ));
+      });
+    }
+  }
+
+  Future<void> _playAudio(String path) async {
+    await _audioPlayer.play(DeviceFileSource(path));
   }
 
   Future<void> _downloadChat() async {
@@ -179,6 +241,10 @@ class _ChatScreenState extends State<ChatScreen> {
                   IconButton(
                     icon: const Icon(Icons.download, color: Colors.white),
                     onPressed: _downloadChat,
+                  ),
+                  IconButton(
+                    icon: Icon(_isRecording ? Icons.stop : Icons.call, color: _isRecording ? Colors.red : Colors.greenAccent),
+                    onPressed: _isRecording ? _stopAndSendVoiceCall : _startVoiceCall,
                   ),
                   Expanded(
                     child: Column(
@@ -219,10 +285,16 @@ class _ChatScreenState extends State<ChatScreen> {
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white60),
                           ),
                           const SizedBox(height: 4),
-                          Text(
-                            msg.text,
-                            style: const TextStyle(color: Colors.white),
-                          ),
+                          if (msg.isAudio)
+                            IconButton(
+                              icon: const Icon(Icons.play_arrow, color: Colors.white),
+                              onPressed: () => _playAudio(msg.audioPath!),
+                            )
+                          else
+                            Text(
+                              msg.text,
+                              style: const TextStyle(color: Colors.white),
+                            ),
                         ],
                       ),
                     ),
@@ -273,6 +345,14 @@ class ChatMessage {
   final String sender;
   final String text;
   final bool isMe;
+  final bool isAudio;
+  final String? audioPath;
 
-  ChatMessage({required this.sender, required this.text, required this.isMe});
+  ChatMessage({
+    required this.sender,
+    required this.text,
+    required this.isMe,
+    this.isAudio = false,
+    this.audioPath
+  });
 }

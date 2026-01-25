@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'chat_screen.dart';
+import '../services/app_state_service.dart';
 
 class OfflineHomeScreen extends StatelessWidget {
   const OfflineHomeScreen({super.key});
@@ -54,14 +55,25 @@ class OfflineHomeScreen extends StatelessWidget {
                 () => _showQuakeInfo(context),
               ),
               const SizedBox(height: 12),
-              _buildInfoActionCard(
-                context,
-                'Güvenli Bölgeler',
-                'Yakınınızdaki toplanma alanlarını öğrenin.',
-                Icons.map,
-                Colors.green[900]!,
-                () {}, // Placeholder for future feature
+              ValueListenableBuilder<bool>(
+                valueListenable: AppStateService.allowAutoSwitch,
+                builder: (context, allow, child) {
+                  if (!allow) {
+                    return _buildInfoActionCard(
+                      context,
+                      'Online Moda Geç',
+                      'İnternet bağlantısını kullanmak için geçiş yapın.',
+                      Icons.wifi,
+                      Colors.blue[900]!,
+                      () {
+                        AppStateService.allowAutoSwitch.value = true;
+                      },
+                    );
+                  }
+                  return const SizedBox.shrink();
+                },
               ),
+              const SizedBox(height: 12),
                 const SizedBox(height: 20),
                 const Text(
                   'QuakeSafe Çevrimdışı Modu - Güvende Kalın',
