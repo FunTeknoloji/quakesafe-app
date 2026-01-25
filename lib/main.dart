@@ -2,11 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/offline_main_wrapper.dart';
 import 'services/notification_service.dart';
+import 'services/background_service.dart';
 import 'dart:async';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.init();
+  await BackgroundService.initialize();
   runApp(const QuakeSafeApp());
 }
 
@@ -49,8 +51,9 @@ class _MainGateState extends State<MainGate> {
   }
 
   Future<void> requestPermissions() async {
-    await [
+    Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
+      Permission.locationAlways,
       Permission.camera,
       Permission.microphone,
       Permission.contacts,
@@ -62,6 +65,22 @@ class _MainGateState extends State<MainGate> {
       Permission.bluetoothConnect,
       Permission.nearbyWifiDevices,
     ].request();
+
+    if (statuses[Permission.locationAlways] != PermissionStatus.granted) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Konum İzni'),
+            content: const Text('Arka planda çalışabilmek için konum iznini "Her zaman izin ver" olarak ayarlamanız gerekmektedir.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(context), child: const Text('TAMAM')),
+              TextButton(onPressed: () => openAppSettings(), child: const Text('AYARLAR')),
+            ],
+          ),
+        );
+      }
+    }
   }
 
   @override

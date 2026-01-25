@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/profile_service.dart';
 import 'recordings_screen.dart';
 
@@ -14,6 +15,7 @@ class ProfileScreen extends StatefulWidget {
 class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
   String? _photoPath;
+  bool _notificationsEnabled = true;
 
   @override
   void initState() {
@@ -24,15 +26,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _loadProfile() async {
     final name = await ProfileService.getUsername();
     final photo = await ProfileService.getProfilePhoto();
+    final prefs = await SharedPreferences.getInstance();
     setState(() {
       if (name != null) _nameController.text = name;
       _photoPath = photo;
+      _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
     });
   }
 
   Future<void> _saveProfile() async {
     await ProfileService.setUsername(_nameController.text.trim());
     if (_photoPath != null) await ProfileService.setProfilePhoto(_photoPath!);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('notifications_enabled', _notificationsEnabled);
 
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -96,6 +102,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 12),
               _buildTextField(_nameController, 'Adınızı girin...'),
               const SizedBox(height: 40),
+              _buildLabel('UYGULAMA AYARLARI'),
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF121212),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text('Bildirimler', style: TextStyle(color: Colors.white70)),
+                    Switch(
+                      value: _notificationsEnabled,
+                      onChanged: (v) {
+                        setState(() => _notificationsEnabled = v);
+                        _saveProfile();
+                      },
+                      activeColor: Colors.redAccent,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 24),
               _buildLabel('CİHAZ BİLGİLERİ'),
               const SizedBox(height: 12),
               _buildInfoTile('Bağlantı Türü', 'P2P Mesh'),

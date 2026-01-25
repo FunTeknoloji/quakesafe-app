@@ -8,6 +8,10 @@ import 'package:audioplayers/audioplayers.dart';
 import 'dart:math' as math;
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import '../services/p2p_connection_service.dart';
+import 'tools/notepad_screen.dart';
+import 'tools/timer_screen.dart';
+import 'tools/calendar_screen.dart';
+import 'tools/light_mode_screen.dart';
 
 class ToolsScreen extends StatefulWidget {
   const ToolsScreen({super.key});
@@ -26,23 +30,43 @@ class _ToolsScreenState extends State<ToolsScreen> {
   bool _isLooping = false;
   String? _currentlyPlaying;
 
+  bool _hasCompass = true;
+  bool _hasAccelerometer = true;
+
   @override
   void initState() {
     super.initState();
-    FlutterCompass.events?.listen((event) {
-      if (mounted) {
-        setState(() {
-          _heading = event.heading;
-        });
-      }
-    });
-    accelerometerEventStream().listen((AccelerometerEvent event) {
-      if (mounted) {
-        setState(() {
-          _accelerometerValues = <double>[event.x, event.y, event.z];
-        });
-      }
-    });
+    _initSensors();
+  }
+
+  void _initSensors() {
+    final compassStream = FlutterCompass.events;
+    if (compassStream == null) {
+      setState(() => _hasCompass = false);
+    } else {
+      compassStream.listen((event) {
+        if (mounted) {
+          setState(() {
+            _heading = event.heading;
+            if (event.heading == null) _hasCompass = false;
+          });
+        }
+      });
+    }
+
+    try {
+      accelerometerEventStream().listen((AccelerometerEvent event) {
+        if (mounted) {
+          setState(() {
+            _accelerometerValues = <double>[event.x, event.y, event.z];
+          });
+        }
+      }, onError: (e) {
+        setState(() => _hasAccelerometer = false);
+      });
+    } catch (e) {
+      setState(() => _hasAccelerometer = false);
+    }
   }
 
   Future<void> _toggleFlashlight() async {
@@ -194,6 +218,15 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 
   Widget _buildCompassInstrument() {
+    if (!_hasCompass) {
+      return const Column(
+        children: [
+          Icon(Icons.explore_off_rounded, size: 60, color: Colors.white10),
+          SizedBox(height: 12),
+          Text('PUSULA YOK', style: TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold)),
+        ],
+      );
+    }
     return Column(
       children: [
         Stack(
@@ -232,6 +265,15 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 
   Widget _buildLevelInstrument() {
+    if (!_hasAccelerometer) {
+      return const Column(
+        children: [
+          Icon(Icons.speed_rounded, size: 60, color: Colors.white10),
+          SizedBox(height: 12),
+          Text('SENSÖR YOK', style: TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold)),
+        ],
+      );
+    }
     double x = _accelerometerValues?[0] ?? 0;
     double y = _accelerometerValues?[1] ?? 0;
     return Column(

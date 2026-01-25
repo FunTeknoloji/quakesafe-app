@@ -147,7 +147,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
             const Icon(Icons.hub_rounded, color: Colors.greenAccent, size: 14),
             const SizedBox(width: 8),
             Text(
-              '${P2PConnectionService().endpointMap.length} CİHAZ BAĞLI',
+              '${P2PConnectionService().endpointMap.length} CİHAZ BAĞLI | 16KHZ HQ',
               style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ],
@@ -159,7 +159,11 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
             _buildRoundButton(
               icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
               color: _isMuted ? Colors.redAccent : Colors.white10,
-              onTap: () => setState(() => _isMuted = !_isMuted),
+              onTap: () {
+                bool newMute = !_isMuted;
+                setState(() => _isMuted = newMute);
+                widget.voiceCallService.toggleMute(newMute);
+              },
             ),
             _buildRoundButton(
               icon: Icons.call_end_rounded,

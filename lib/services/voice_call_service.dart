@@ -14,10 +14,15 @@ class VoiceCallService {
 
   StreamSubscription? _recorderSubscription;
   bool _isCallActive = false;
+  bool _isMuted = false;
 
   bool _isRecording = false;
   File? _recordFile;
   IOSink? _recordSink;
+
+  void toggleMute(bool mute) {
+    _isMuted = mute;
+  }
 
   Future<void> init() async {
     // Optimization: 16kHz Mono is enough for voice and reduces data rate
@@ -34,10 +39,23 @@ class VoiceCallService {
 
     List<int> buffer = [];
     _recorderSubscription = _recorder.audioStream.listen((Uint8List data) {
+      if (_isMuted) return; // Silent if muted
+
       if (_isRecording) _recordSink?.add(data);
 
+      // Simple Noise Gate: ignore very low amplitude chunks
+      bool hasSound = false;
+      for (int i = 0; i < data.length; i+=2) {
+        if (data[i].abs() > 10) { // Threshold
+          hasSound = true;
+          break;
+        }
+      }
+
+      if (!hasSound) return;
+
       buffer.addAll(data);
-      if (buffer.length >= 2048) { // Reduced chunk size for lower latency
+      if (buffer.length >= 1024) { // Even smaller for faster delivery
         Nearby().sendBytesPayload(endpointId, Uint8List.fromList(buffer));
         buffer.clear();
       }

@@ -58,24 +58,13 @@ class _ChatScreenState extends State<ChatScreen> {
     if (name != null && name.isNotEmpty) {
       setState(() => userName = name);
     }
-    await _loadMessages();
+    // "her çık gir yapınca yeni sohbet olacak" - so we don't load old messages into current list
+    setState(() {
+      messages = [];
+    });
     await _voiceCallService.init();
     _p2p.startDiscovery(userName, onConnectionInitiated);
     _p2p.startAdvertising(userName, onConnectionInitiated);
-  }
-
-  Future<void> _loadMessages() async {
-    final data = await DatabaseService.getMessages();
-    setState(() {
-      messages = data.map((m) => ChatMessage(
-        sender: m['sender'],
-        text: m['text'],
-        isMe: m['isMe'] == 1,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(m['timestamp']),
-        type: m['type'] ?? 'text',
-        extraData: m['extraData'],
-      )).toList();
-    });
   }
 
   @override
@@ -264,16 +253,19 @@ class _ChatScreenState extends State<ChatScreen> {
     });
   }
 
-  Future<void> _sendImage() async {
-    final XFile? image = await ImagePicker().pickImage(source: ImageSource.gallery);
-    if (image != null) {
-      for (String id in _p2p.endpointMap.keys) {
-        int payloadId = await Nearby().sendFilePayload(id, image.path);
-        _sendFileMeta(id, payloadId, image.path, 'image');
-      }
-      await DatabaseService.insertMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path);
-      setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path)));
+  Future<void> _sendLocation() async {
+    Position pos = await Geolocator.getCurrentPosition();
+    String lat = pos.latitude.toStringAsFixed(6);
+    String lng = pos.longitude.toStringAsFixed(6);
+    String url = 'https://www.google.com/maps?q=$lat,$lng';
+    String msg = '📍 KONUM BİLGİSİ\nEnlem: $lat\nBoylam: $lng\nHarita: $url';
+
+    for (String id in _p2p.endpointMap.keys) {
+      Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
     }
+
+    await DatabaseService.insertMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url);
+    setState(() => messages.add(ChatMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url)));
   }
 
   void _sendFileMeta(String to, int payloadId, String path, String type) {
@@ -284,15 +276,6 @@ class _ChatScreenState extends State<ChatScreen> {
       'fileType': type
     };
     Nearby().sendBytesPayload(to, Uint8List.fromList(utf8.encode(jsonEncode(meta))));
-  }
-
-  Future<void> _sendLocation() async {
-    Position pos = await Geolocator.getCurrentPosition();
-    String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
-    String msg = '📍 Konum: $url';
-    for (String id in _p2p.endpointMap.keys) Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
-    await DatabaseService.insertMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url);
-    setState(() => messages.add(ChatMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url)));
   }
 
   Future<void> _toggleRecording() async {
@@ -322,17 +305,24 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Column(
+            Row(
               children: [
-                _buildTacticalHeader(),
+                _buildTimeSidebar(),
                 Expanded(
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(20),
-                    itemCount: messages.length,
-                    itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
+                  child: Column(
+                    children: [
+                      _buildTacticalHeader(),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.all(20),
+                          itemCount: messages.length,
+                          itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
+                        ),
+                      ),
+                      _buildTacticalInput(),
+                    ],
                   ),
                 ),
-                _buildTacticalInput(),
               ],
             ),
             if (_isScanning && _p2p.endpointMap.isEmpty) _buildScanningOverlay(),
@@ -342,20 +332,68 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildTimeSidebar() {
+    return StreamBuilder(
+      stream: Stream.periodic(const Duration(seconds: 1)),
+      builder: (context, snapshot) {
+        final now = DateTime.now();
+        return Container(
+          width: 60,
+          decoration: BoxDecoration(
+            color: const Color(0xFF080808),
+            border: Border(right: BorderSide(color: Colors.white.withOpacity(0.05))),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildTimeElement(DateFormat('HH').format(now), 'SAAT'),
+              const SizedBox(height: 20),
+              _buildTimeElement(DateFormat('mm').format(now), 'DAK'),
+              const SizedBox(height: 20),
+              _buildTimeElement(DateFormat('ss').format(now), 'SN'),
+              const SizedBox(height: 40),
+              RotatedBox(
+                quarterTurns: 3,
+                child: Text(
+                  DateFormat('dd/MM/yyyy').format(now),
+                  style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTimeElement(String value, String label) {
+    return Column(
+      children: [
+        Text(value, style: const TextStyle(color: Colors.redAccent, fontSize: 20, fontWeight: FontWeight.w900)),
+        Text(label, style: const TextStyle(color: Colors.white10, fontSize: 8, fontWeight: FontWeight.bold)),
+      ],
+    );
+  }
+
   Widget _buildScanningOverlay() {
     return Container(
-      color: Colors.black.withOpacity(0.9),
+      color: Colors.black.withOpacity(0.95),
       width: double.infinity,
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(color: Colors.redAccent),
-          const SizedBox(height: 24),
-          const Text('CİHAZLAR TARANIYOR...', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 2)),
-          const SizedBox(height: 8),
-          const Text('Lütfen yakındaki bir cihazın da tarama\nyaptığından emin olun.', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
-          const SizedBox(height: 40),
-          TextButton(onPressed: () => setState(() => _isScanning = false), child: const Text('ÇEVRİMDIŞI MODDA DEVAM ET', style: TextStyle(color: Colors.redAccent))),
+          const CircularProgressIndicator(color: Colors.redAccent, strokeWidth: 2),
+          const SizedBox(height: 32),
+          const Text('MESH AĞI TARANIYOR', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 4, fontSize: 12)),
+          const SizedBox(height: 12),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 40),
+            child: Text(
+              'Çevredeki aktif QuakeSafe cihazları aranıyor. Lütfen diğer cihazlarda da bu ekranın açık olduğundan emin olun.',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white24, fontSize: 11, height: 1.5),
+            ),
+          ),
         ],
       ),
     );
@@ -363,25 +401,66 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildTacticalHeader() {
     return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05)))),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
+      decoration: BoxDecoration(color: const Color(0xFF0A0A0A), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: Row(
         children: [
-          CircleAvatar(backgroundColor: Colors.redAccent.withOpacity(0.1), child: const Icon(Icons.hub_rounded, color: Colors.redAccent, size: 20)),
-          const SizedBox(width: 16),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(_isCalling ? 'ÇAĞRI AKTİF' : 'MESH SOHBET', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1)),
-                Text('${_p2p.endpointMap.length} Cihaz Bağlı', style: TextStyle(color: _isCalling ? Colors.greenAccent : Colors.white38, fontSize: 11)),
-              ],
+            child: GestureDetector(
+              onTap: _showConnectedDevicesPopup,
+              child: Row(
+                children: [
+                  const Icon(Icons.hub_rounded, color: Colors.greenAccent, size: 18),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '${_p2p.endpointMap.length} CİHAZ AKTİF',
+                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
+                      ),
+                      const Text('Bağlantıları görmek için dokunun', style: TextStyle(color: Colors.white24, fontSize: 9)),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
           IconButton(
             icon: Icon(_isCalling ? Icons.call_end : Icons.call, color: _isCalling ? Colors.redAccent : Colors.greenAccent),
             onPressed: _toggleVoiceCall,
           ),
+        ],
+      ),
+    );
+  }
+
+  void _showConnectedDevicesPopup() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF151515),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Text('BAĞLI CİHAZLAR', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: _p2p.endpointMap.isEmpty
+            ? const Text('Bağlı cihaz yok', style: TextStyle(color: Colors.white38))
+            : ListView.builder(
+                shrinkWrap: true,
+                itemCount: _p2p.endpointMap.length,
+                itemBuilder: (context, i) {
+                  final e = _p2p.endpointMap.values.elementAt(i);
+                  return ListTile(
+                    leading: const Icon(Icons.phone_android_rounded, color: Colors.redAccent),
+                    title: Text(e.endpointName, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    subtitle: const Text('P2P Mesh Link', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                  );
+                },
+              ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('KAPAT', style: TextStyle(color: Colors.redAccent))),
         ],
       ),
     );
@@ -421,19 +500,38 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildContent(ChatMessage msg) {
     if (msg.type == 'image') return ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(msg.extraData!)));
-    if (msg.type == 'location') return _buildLocationPreview(msg.extraData!);
+    if (msg.type == 'location') return _buildLocationPreview(msg.text, msg.extraData!);
     if (msg.type == 'voice') return Row(children: [const Icon(Icons.mic, size: 16, color: Colors.white70), const SizedBox(width: 8), const Text('Ses Mesajı', style: TextStyle(color: Colors.white, fontSize: 14)), IconButton(onPressed: () => _voiceCallService.playAudioFile(msg.extraData!), icon: const Icon(Icons.play_arrow, color: Colors.white))]);
     return Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14));
   }
 
-  Widget _buildLocationPreview(String url) {
-    return InkWell(
-      onTap: () async { if (await canLaunchUrl(Uri.parse(url))) await launchUrl(Uri.parse(url)); },
-      child: Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
-        child: const Row(children: [Icon(Icons.location_on, color: Colors.redAccent), SizedBox(width: 8), Text('Konumu Gör', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
-      ),
+  Widget _buildLocationPreview(String text, String url) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(text, style: const TextStyle(color: Colors.white, fontSize: 13)),
+        const SizedBox(height: 10),
+        InkWell(
+          onTap: () async {
+            // Force open in Google Maps by using the URL
+            if (await canLaunchUrl(Uri.parse(url))) {
+              await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            }
+          },
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12), border: Border.all(color: Colors.redAccent.withOpacity(0.3))),
+            child: const Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.map_rounded, color: Colors.redAccent, size: 18),
+                SizedBox(width: 8),
+                Text('GOOGLE MAPS\'TE AÇ', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12)),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -460,10 +558,20 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _showAddMenu() {
-    showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))), builder: (context) => Padding(padding: const EdgeInsets.all(32), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
-      _buildAddIcon(Icons.image, 'Resim', Colors.orange, _sendImage),
-      _buildAddIcon(Icons.location_on, 'Konum', Colors.blue, _sendLocation),
-    ])));
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color(0xFF1A1A1A),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.all(32),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: [
+            _buildAddIcon(Icons.location_on, 'Konum Paylaş', Colors.blue, _sendLocation),
+          ]
+        )
+      )
+    );
   }
 
   Widget _buildAddIcon(IconData icon, String label, Color color, VoidCallback onTap) {
