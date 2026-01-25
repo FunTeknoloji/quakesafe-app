@@ -25,7 +25,7 @@ class QuakeSafeApp extends StatelessWidget {
         colorScheme: ColorScheme.fromSeed(
           seedColor: Colors.redAccent,
           brightness: Brightness.dark,
-          background: Colors.black,
+          surface: Colors.black,
         ),
         useMaterial3: true,
       ),

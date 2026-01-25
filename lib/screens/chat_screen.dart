@@ -24,7 +24,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final Strategy strategy = Strategy.P2P_CLUSTER;
-  String userName = 'User_${Random().nextInt(10000)}';
+  String userName = 'Kullanıcı';
 
   Map<String, ConnectionInfo> endpointMap = {};
   List<ChatMessage> messages = [];
@@ -44,9 +44,7 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _initChat() async {
     String? name = await ProfileService.getUsername();
     if (name != null && name.isNotEmpty) {
-      setState(() {
-        userName = name;
-      });
+      setState(() => userName = name);
     }
     await _loadMessages();
     await _voiceCallService.init();
@@ -78,143 +76,61 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void startAdvertising() async {
     try {
-      bool a = await Nearby().startAdvertising(
-        userName,
-        strategy,
+      await Nearby().startAdvertising(userName, strategy,
         onConnectionInitiated: onConnectionInitiated,
-        onConnectionResult: (id, status) {
-          debugPrint('Connection Status: $status');
-        },
-        onDisconnected: (id) {
-          setState(() {
-            endpointMap.remove(id);
-          });
-        },
+        onConnectionResult: (id, status) => debugPrint('Status: $status'),
+        onDisconnected: (id) => setState(() => endpointMap.remove(id)),
       );
-      debugPrint('Advertising: $a');
-    } catch (e) {
-      debugPrint('Error Advertising: $e');
-    }
+    } catch (e) { debugPrint('Error: $e'); }
   }
 
   void startDiscovery() async {
     try {
-      bool a = await Nearby().startDiscovery(
-        userName,
-        strategy,
+      await Nearby().startDiscovery(userName, strategy,
         onEndpointFound: (id, name, serviceId) {
-          // Auto connect to anyone found for easier "offline emergency chat"
-          Nearby().requestConnection(
-            userName,
-            id,
+          Nearby().requestConnection(userName, id,
             onConnectionInitiated: onConnectionInitiated,
-            onConnectionResult: (id, status) {
-              debugPrint('Discovery Connection Status: $status');
-            },
-            onDisconnected: (id) {
-              setState(() {
-                endpointMap.remove(id);
-              });
-            },
+            onConnectionResult: (id, status) => debugPrint('Status: $status'),
+            onDisconnected: (id) => setState(() => endpointMap.remove(id)),
           );
         },
-        onEndpointLost: (id) {
-          debugPrint('Endpoint lost: $id');
-        },
+        onEndpointLost: (id) {},
       );
-      debugPrint('Discovery: $a');
-    } catch (e) {
-      debugPrint('Error Discovery: $e');
-    }
+    } catch (e) { debugPrint('Error: $e'); }
   }
 
   void onConnectionInitiated(String id, ConnectionInfo info) {
-    setState(() {
-      endpointMap[id] = info;
-    });
-    Nearby().acceptConnection(
-      id,
+    setState(() => endpointMap[id] = info);
+    Nearby().acceptConnection(id,
       onPayLoadRecieved: (id, payload) async {
         if (payload.type == PayloadType.BYTES) {
           Uint8List bytes = payload.bytes!;
-          // Check if it's audio data (very short and frequent, or marked)
-          // For simplicity, let's assume if we are in a call, it's audio.
-          // In a real app, we'd use a prefix byte.
           if (_isCalling && _activeCallEndpoint == id) {
              _voiceCallService.receiveAudio(bytes);
              return;
           }
-
           String str = utf8.decode(bytes);
           if (str.startsWith('CMD:VOICE_START')) {
-            setState(() {
-              _isCalling = true;
-              _activeCallEndpoint = id;
-            });
+            setState(() { _isCalling = true; _activeCallEndpoint = id; });
             _voiceCallService.startCall(id);
             return;
           } else if (str.startsWith('CMD:VOICE_STOP')) {
-            setState(() {
-              _isCalling = false;
-              _activeCallEndpoint = null;
-            });
+            setState(() { _isCalling = false; _activeCallEndpoint = null; });
             _voiceCallService.stopCall();
             return;
           }
 
           String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
-          String type = 'text';
-          String? extraData;
-
-          if (str.startsWith('📍 Konum:')) {
-            type = 'location';
-            extraData = str.split('📍 Konum: ').last;
-          }
-
-          await DatabaseService.insertMessage(
-            sender: sender,
-            text: str,
-            isMe: false,
-            type: type,
-            extraData: extraData,
-          );
-
-          setState(() {
-            messages.add(ChatMessage(
-              sender: sender,
-              text: str,
-              isMe: false,
-              timestamp: DateTime.now(),
-              type: type,
-              extraData: extraData,
-            ));
-          });
+          String type = str.startsWith('📍 Konum:') ? 'location' : 'text';
+          String? extra = type == 'location' ? str.split('📍 Konum: ').last : null;
+          await DatabaseService.insertMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra);
+          setState(() => messages.add(ChatMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra)));
         } else if (payload.type == PayloadType.FILE) {
           String path = payload.filePath!;
           String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
-
-          // Determine if it's image or voice based on some logic or metadata
-          // For now, let's assume if it ends with .m4a it's voice, else image
           String type = path.endsWith('.m4a') ? 'voice' : 'image';
-
-          await DatabaseService.insertMessage(
-            sender: sender,
-            text: type == 'voice' ? '[Sesli Mesaj]' : '[Resim]',
-            isMe: false,
-            type: type,
-            extraData: path,
-          );
-
-          setState(() {
-            messages.add(ChatMessage(
-              sender: sender,
-              text: type == 'voice' ? '[Sesli Mesaj]' : '[Resim]',
-              isMe: false,
-              timestamp: DateTime.now(),
-              type: type,
-              extraData: path,
-            ));
-          });
+          await DatabaseService.insertMessage(sender: sender, text: type == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: type, extraData: path);
+          setState(() => messages.add(ChatMessage(sender: sender, text: type == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: type, extraData: path)));
         }
       },
     );
@@ -223,24 +139,11 @@ class _ChatScreenState extends State<ChatScreen> {
   void sendMessage() async {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
-
     Uint8List bytes = Uint8List.fromList(utf8.encode(text));
-    for (String endpointId in endpointMap.keys) {
-      Nearby().sendBytesPayload(endpointId, bytes);
-    }
-
-    await DatabaseService.insertMessage(
-      sender: 'Ben ($userName)',
-      text: text,
-      isMe: true,
-    );
+    for (String id in endpointMap.keys) Nearby().sendBytesPayload(id, bytes);
+    await DatabaseService.insertMessage(sender: 'Ben', text: text, isMe: true);
     setState(() {
-      messages.add(ChatMessage(
-        sender: 'Ben ($userName)',
-        text: text,
-        isMe: true,
-        timestamp: DateTime.now(),
-      ));
+      messages.add(ChatMessage(sender: 'Ben', text: text, isMe: true));
       _textController.clear();
     });
   }
@@ -248,82 +151,33 @@ class _ChatScreenState extends State<ChatScreen> {
   void _toggleVoiceCall() {
     if (endpointMap.isEmpty) return;
     String targetId = endpointMap.keys.first;
-
     if (_isCalling) {
-      _sendControlMsg('CMD:VOICE_STOP', targetId);
+      Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_STOP')));
       _voiceCallService.stopCall();
-      setState(() {
-        _isCalling = false;
-        _activeCallEndpoint = null;
-      });
+      setState(() { _isCalling = false; _activeCallEndpoint = null; });
     } else {
-      _sendControlMsg('CMD:VOICE_START', targetId);
+      Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode('CMD:VOICE_START')));
       _voiceCallService.startCall(targetId);
-      setState(() {
-        _isCalling = true;
-        _activeCallEndpoint = targetId;
-      });
+      setState(() { _isCalling = true; _activeCallEndpoint = targetId; });
     }
   }
 
-  void _sendControlMsg(String msg, String endpointId) {
-    Nearby().sendBytesPayload(endpointId, Uint8List.fromList(utf8.encode(msg)));
-  }
-
   Future<void> _sendImage() async {
-    final ImagePicker picker = ImagePicker();
-    final XFile? image = await picker.pickImage(source: ImageSource.gallery);
+    final XFile? image = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (image != null) {
-      for (String id in endpointMap.keys) {
-        Nearby().sendFilePayload(id, image.path);
-      }
-      await DatabaseService.insertMessage(
-        sender: 'Ben ($userName)',
-        text: '[Resim]',
-        isMe: true,
-        type: 'image',
-        extraData: image.path,
-      );
-      setState(() {
-        messages.add(ChatMessage(
-          sender: 'Ben ($userName)',
-          text: '[Resim]',
-          isMe: true,
-          timestamp: DateTime.now(),
-          type: 'image',
-          extraData: image.path,
-        ));
-      });
+      for (String id in endpointMap.keys) Nearby().sendFilePayload(id, image.path);
+      await DatabaseService.insertMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path);
+      setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Resim]', isMe: true, type: 'image', extraData: image.path)));
     }
   }
 
   Future<void> _sendLocation() async {
-    Position position = await Geolocator.getCurrentPosition();
-    String locUrl = 'https://www.google.com/maps?q=${position.latitude},${position.longitude}';
-    String locMsg = '📍 Konum: $locUrl';
-
-    Uint8List bytes = Uint8List.fromList(utf8.encode(locMsg));
-    for (String id in endpointMap.keys) {
-      Nearby().sendBytesPayload(id, bytes);
-    }
-
-    await DatabaseService.insertMessage(
-      sender: 'Ben ($userName)',
-      text: locMsg,
-      isMe: true,
-      type: 'location',
-      extraData: locUrl,
-    );
-    setState(() {
-      messages.add(ChatMessage(
-        sender: 'Ben ($userName)',
-        text: locMsg,
-        isMe: true,
-        timestamp: DateTime.now(),
-        type: 'location',
-        extraData: locUrl,
-      ));
-    });
+    Position pos = await Geolocator.getCurrentPosition();
+    String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
+    String msg = '📍 Konum: $url';
+    for (String id in endpointMap.keys) Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
+    await DatabaseService.insertMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url);
+    setState(() => messages.add(ChatMessage(sender: 'Ben', text: msg, isMe: true, type: 'location', extraData: url)));
   }
 
   Future<void> _toggleRecording() async {
@@ -331,44 +185,15 @@ class _ChatScreenState extends State<ChatScreen> {
       final path = await _audioRecorder.stop();
       setState(() => _isRecording = false);
       if (path != null) {
-        for (String id in endpointMap.keys) {
-          Nearby().sendFilePayload(id, path);
-        }
-        await DatabaseService.insertMessage(
-          sender: 'Ben ($userName)',
-          text: '[Sesli Mesaj]',
-          isMe: true,
-          type: 'voice',
-          extraData: path,
-        );
-        setState(() {
-          messages.add(ChatMessage(
-            sender: 'Ben ($userName)',
-            text: '[Sesli Mesaj]',
-            isMe: true,
-            timestamp: DateTime.now(),
-            type: 'voice',
-            extraData: path,
-          ));
-        });
+        for (String id in endpointMap.keys) Nearby().sendFilePayload(id, path);
+        await DatabaseService.insertMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path);
+        setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path)));
       }
-    } else {
-      if (await _audioRecorder.hasPermission()) {
-        final directory = await getApplicationDocumentsDirectory();
-        final path = '${directory.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-        await _audioRecorder.start(const RecordConfig(), path: path);
-        setState(() => _isRecording = true);
-      }
+    } else if (await _audioRecorder.hasPermission()) {
+      final dir = await getApplicationDocumentsDirectory();
+      await _audioRecorder.start(const RecordConfig(), path: '${dir.path}/v_${DateTime.now().ms}.m4a');
+      setState(() => _isRecording = true);
     }
-  }
-
-  Future<void> _downloadChat() async {
-    String chatLog = messages.map((m) => '${m.sender}: ${m.text}').join('\n');
-    final directory = await getApplicationDocumentsDirectory();
-    final file = File('${directory.path}/quakesafe_chat_log.txt');
-    await file.writeAsString(chatLog);
-
-    await Share.shareXFiles([XFile(file.path)], text: 'QuakeSafe Sohbet Geçmişi');
   }
 
   @override
@@ -378,66 +203,41 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Column(
           children: [
-            _buildTopBar(),
-            const Divider(color: Colors.white24),
+            _buildTacticalHeader(),
             Expanded(
               child: ListView.builder(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                padding: const EdgeInsets.all(20),
                 itemCount: messages.length,
-                itemBuilder: (context, index) {
-                  final msg = messages[index];
-                  return _buildMessageBubble(msg);
-                },
+                itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
               ),
             ),
-            _buildInputArea(),
+            _buildTacticalInput(),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildTopBar() {
+  Widget _buildTacticalHeader() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border(bottom: BorderSide(color: Colors.white10)),
-      ),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: Row(
         children: [
-          Container(
-            width: 45,
-            height: 45,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(colors: [Colors.redAccent, Colors.red.shade900]),
-              borderRadius: BorderRadius.circular(15),
-            ),
-            child: const Icon(Icons.group_rounded, color: Colors.white),
-          ),
-          const SizedBox(width: 15),
+          CircleAvatar(backgroundColor: Colors.redAccent.withOpacity(0.1), child: const Icon(Icons.hub_rounded, color: Colors.redAccent, size: 20)),
+          const SizedBox(width: 16),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _isCalling ? '📞 Görüşme Aktif' : 'ÇEVRİMDIŞI SOHBET',
-                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1),
-                ),
-                Text(
-                  '${endpointMap.length} cihaz bağlandı',
-                  style: TextStyle(color: _isCalling ? Colors.greenAccent : Colors.white38, fontSize: 12),
-                ),
+                Text(_isCalling ? 'ÇAĞRI AKTİF' : 'MESH SOHBET', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 1)),
+                Text('${endpointMap.length} Cihaz Bağlı', style: TextStyle(color: _isCalling ? Colors.greenAccent : Colors.white38, fontSize: 11)),
               ],
             ),
           ),
           IconButton(
-            icon: Icon(_isCalling ? Icons.call_end_rounded : Icons.call_rounded, color: _isCalling ? Colors.redAccent : Colors.greenAccent),
+            icon: Icon(_isCalling ? Icons.call_end : Icons.call, color: _isCalling ? Colors.redAccent : Colors.greenAccent),
             onPressed: _toggleVoiceCall,
-          ),
-          IconButton(
-            icon: const Icon(Icons.file_download_rounded, color: Colors.white70),
-            onPressed: _downloadChat,
           ),
         ],
       ),
@@ -446,209 +246,85 @@ class _ChatScreenState extends State<ChatScreen> {
 
   Widget _buildMessageBubble(ChatMessage msg) {
     bool isMe = msg.isMe;
-    String timeStr = DateFormat('HH:mm').format(msg.timestamp);
-
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
+        padding: const EdgeInsets.all(12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.75),
         decoration: BoxDecoration(
-          color: isMe ? Colors.redAccent : Colors.white.withOpacity(0.08),
+          color: isMe ? Colors.redAccent.withOpacity(0.9) : const Color(0xFF1A1A1A),
           borderRadius: BorderRadius.only(
-            topLeft: const Radius.circular(20),
-            topRight: const Radius.circular(20),
-            bottomLeft: Radius.circular(isMe ? 20 : 0),
-            bottomRight: Radius.circular(isMe ? 0 : 20),
+            topLeft: const Radius.circular(16),
+            topRight: const Radius.circular(16),
+            bottomLeft: Radius.circular(isMe ? 16 : 0),
+            bottomRight: Radius.circular(isMe ? 0 : 16),
           ),
+          border: Border.all(color: Colors.white.withOpacity(0.05)),
         ),
-        padding: const EdgeInsets.all(12),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!isMe)
-              Text(
-                msg.sender,
-                style: const TextStyle(color: Colors.white54, fontSize: 11, fontWeight: FontWeight.bold),
-              ),
-            if (!isMe) const SizedBox(height: 6),
-            _buildMessageContent(msg),
+            if (!isMe) Text(msg.sender, style: const TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)),
             const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.bottomRight,
-              child: Text(
-                timeStr,
-                style: TextStyle(color: isMe ? Colors.white60 : Colors.white24, fontSize: 10),
-              ),
-            )
+            _buildContent(msg),
+            const SizedBox(height: 4),
+            Text(DateFormat('HH:mm').format(msg.timestamp), style: TextStyle(color: isMe ? Colors.white60 : Colors.white24, fontSize: 9)),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildMessageContent(ChatMessage msg) {
-    if (msg.type == 'image' && msg.extraData != null) {
-      return Column(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.file(File(msg.extraData!)),
-          ),
-          const SizedBox(height: 8),
-          const Text('Resim Gönderildi', style: TextStyle(color: Colors.white70, fontSize: 12)),
-        ],
-      );
-    } else if (msg.type == 'location' && msg.extraData != null) {
-      return InkWell(
-        onTap: () async {
-          final url = Uri.parse(msg.extraData!);
-          if (await canLaunchUrl(url)) {
-            await launchUrl(url);
-          }
-        },
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(Icons.location_on_rounded, color: Colors.white, size: 24),
-              const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Konum Paylaşıldı', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14)),
-                  Text('Haritada Aç', style: TextStyle(color: Colors.white.withOpacity(0.6), fontSize: 12)),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    } else if (msg.type == 'voice' && msg.extraData != null) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.mic_rounded, color: Colors.white, size: 20),
-          const SizedBox(width: 8),
-          const Text('Sesli Mesaj', style: TextStyle(color: Colors.white, fontStyle: FontStyle.italic)),
-          const SizedBox(width: 8),
-          IconButton(
-            icon: const Icon(Icons.play_arrow_rounded, color: Colors.white),
-            onPressed: () {
-              _voiceCallService.playAudioFile(msg.extraData!);
-            },
-          ),
-        ],
-      );
-    } else {
-      return Text(
-        msg.text,
-        style: const TextStyle(color: Colors.white, fontSize: 15),
-      );
-    }
+  Widget _buildContent(ChatMessage msg) {
+    if (msg.type == 'image') return ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(msg.extraData!)));
+    if (msg.type == 'location') return _buildLocationPreview(msg.extraData!);
+    if (msg.type == 'voice') return Row(children: [const Icon(Icons.mic, size: 16, color: Colors.white70), const SizedBox(width: 8), const Text('Ses Mesajı', style: TextStyle(color: Colors.white, fontSize: 14)), IconButton(onPressed: () => _voiceCallService.playAudioFile(msg.extraData!), icon: const Icon(Icons.play_arrow, color: Colors.white))]);
+    return Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14));
   }
 
-  Widget _buildInputArea() {
+  Widget _buildLocationPreview(String url) {
+    return InkWell(
+      onTap: () async { if (await canLaunchUrl(Uri.parse(url))) await launchUrl(Uri.parse(url)); },
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(10)),
+        child: const Row(children: [Icon(Icons.location_on, color: Colors.redAccent), SizedBox(width: 8), Text('Konumu Gör', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold))]),
+      ),
+    );
+  }
+
+  Widget _buildTacticalInput() {
     return Container(
       padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.black,
-        border: Border(top: BorderSide(color: Colors.white10)),
-      ),
+      decoration: BoxDecoration(color: const Color(0xFF0F0F0F), border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: Row(
         children: [
-          IconButton(
-            icon: const Icon(Icons.add_circle_outline_rounded, color: Colors.white54),
-            onPressed: () {
-              showModalBottomSheet(
-                context: context,
-                backgroundColor: Colors.grey[900],
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(30))),
-                builder: (context) => _buildAddMenu(),
-              );
-            },
-          ),
+          IconButton(onPressed: _showAddMenu, icon: const Icon(Icons.add_box_outlined, color: Colors.white54)),
           Expanded(
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: TextField(
-                controller: _textController,
-                style: const TextStyle(color: Colors.white),
-                decoration: const InputDecoration(
-                  hintText: 'Bir mesaj yazın...',
-                  hintStyle: TextStyle(color: Colors.white24),
-                  border: InputBorder.none,
-                ),
-              ),
+              decoration: BoxDecoration(color: Colors.black, borderRadius: BorderRadius.circular(16), border: Border.all(color: Colors.white.withOpacity(0.05))),
+              child: TextField(controller: _textController, style: const TextStyle(color: Colors.white), decoration: const InputDecoration(hintText: 'Mesaj Gönder...', hintStyle: TextStyle(color: Colors.white24), border: InputBorder.none)),
             ),
           ),
-          const SizedBox(width: 5),
-          IconButton(
-            icon: Icon(_isRecording ? Icons.stop_circle_rounded : Icons.mic_rounded,
-                     color: _isRecording ? Colors.redAccent : Colors.white54),
-            onPressed: _toggleRecording,
-          ),
-          const SizedBox(width: 5),
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.redAccent,
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              icon: const Icon(Icons.send_rounded, color: Colors.white),
-              onPressed: sendMessage,
-            ),
-          ),
+          const SizedBox(width: 12),
+          IconButton(onPressed: _toggleRecording, icon: Icon(_isRecording ? Icons.stop_circle : Icons.mic, color: _isRecording ? Colors.redAccent : Colors.white54)),
+          IconButton(onPressed: sendMessage, icon: const Icon(Icons.send_rounded, color: Colors.redAccent)),
         ],
       ),
     );
   }
 
-  Widget _buildAddMenu() {
-    return Container(
-      padding: const EdgeInsets.all(30),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _buildAddOption(Icons.image_rounded, 'Resim', Colors.orangeAccent, () {
-            Navigator.pop(context);
-            _sendImage();
-          }),
-          _buildAddOption(Icons.location_on_rounded, 'Konum', Colors.blueAccent, () {
-            Navigator.pop(context);
-            _sendLocation();
-          }),
-          _buildAddOption(Icons.insert_drive_file_rounded, 'Dosya', Colors.greenAccent, () {}),
-        ],
-      ),
-    );
+  void _showAddMenu() {
+    showModalBottomSheet(context: context, backgroundColor: const Color(0xFF1A1A1A), shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))), builder: (context) => Padding(padding: const EdgeInsets.all(32), child: Row(mainAxisAlignment: MainAxisAlignment.spaceAround, children: [
+      _buildAddIcon(Icons.image, 'Resim', Colors.orange, _sendImage),
+      _buildAddIcon(Icons.location_on, 'Konum', Colors.blue, _sendLocation),
+    ])));
   }
 
-  Widget _buildAddOption(IconData icon, String label, Color color, VoidCallback onTap) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        InkWell(
-          onTap: onTap,
-          child: Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle),
-            child: Icon(icon, color: color, size: 30),
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(label, style: const TextStyle(color: Colors.white, fontSize: 12)),
-      ],
-    );
+  Widget _buildAddIcon(IconData icon, String label, Color color, VoidCallback onTap) {
+    return GestureDetector(onTap: () { Navigator.pop(context); onTap(); }, child: Column(mainAxisSize: MainAxisSize.min, children: [Container(padding: const EdgeInsets.all(16), decoration: BoxDecoration(color: color.withOpacity(0.1), shape: BoxShape.circle), child: Icon(icon, color: color)), const SizedBox(height: 8), Text(label, style: const TextStyle(color: Colors.white70, fontSize: 12))]));
   }
 }
 
@@ -669,3 +345,5 @@ class ChatMessage {
     this.extraData,
   }) : timestamp = timestamp ?? DateTime.now();
 }
+
+extension DateTimeMs on DateTime { int get ms => millisecondsSinceEpoch; }

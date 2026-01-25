@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -19,7 +18,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     _fetchContacts();
   }
 
-  Future _fetchContacts() async {
+  Future<void> _fetchContacts() async {
     if (!await FlutterContacts.requestPermission(readonly: true)) {
       setState(() => _permissionDenied = true);
     } else {
@@ -34,113 +33,60 @@ class _ContactsScreenState extends State<ContactsScreen> {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-              child: Text(
-                'REHBER',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                  letterSpacing: 2,
-                ),
-              ),
-            ),
-            if (_permissionDenied)
-              _buildErrorState('Rehber erişim izni verilmedi.')
-            else if (_contacts == null)
-              const Expanded(child: Center(child: CircularProgressIndicator(color: Colors.redAccent)))
-            else if (_contacts!.isEmpty)
-              _buildErrorState('Rehberinizde kişi bulunamadı.')
-            else
-              Expanded(
-                child: ListView.separated(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  itemCount: _contacts!.length,
-                  separatorBuilder: (context, index) => const SizedBox(height: 12),
-                  itemBuilder: (context, i) {
-                    final contact = _contacts![i];
-                    return Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.05),
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.white.withOpacity(0.05)),
-                      ),
-                      child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [Colors.redAccent, Colors.red.shade900],
-                            ),
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          child: Center(
-                            child: Text(
-                              contact.displayName[0].toUpperCase(),
-                              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 20),
-                            ),
-                          ),
-                        ),
-                        title: Text(contact.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                        subtitle: Text(
-                          contact.phones.isNotEmpty ? contact.phones.first.number : 'Numara yok',
-                          style: const TextStyle(color: Colors.white38),
-                        ),
-                        trailing: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.greenAccent.withOpacity(0.1),
-                            shape: BoxShape.circle,
-                          ),
-                          child: IconButton(
-                            icon: const Icon(Icons.phone_rounded, color: Colors.greenAccent, size: 20),
-                            onPressed: () async {
-                              if (contact.phones.isNotEmpty) {
-                                final Uri url = Uri.parse('tel:${contact.phones.first.number}');
-                                if (await canLaunchUrl(url)) {
-                                  await launchUrl(url);
-                                }
-                              }
-                            },
-                          ),
-                        ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+            _buildHeader(),
+            Expanded(child: _buildBody()),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () async {
-          await FlutterContacts.openExternalInsert();
-          _fetchContacts();
-        },
-        backgroundColor: Colors.redAccent,
-        icon: const Icon(Icons.person_add_rounded, color: Colors.white),
-        label: const Text('KİŞİ EKLE', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
     );
   }
 
-  Widget _buildErrorState(String message) {
-    return Expanded(
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline_rounded, size: 64, color: Colors.white24),
-            const SizedBox(height: 16),
-            Text(message, style: const TextStyle(color: Colors.white54)),
-          ],
-        ),
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.all(24.0),
+      child: Row(
+        children: [
+          const Text('REHBER', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
+          const Spacer(),
+          IconButton(onPressed: _fetchContacts, icon: const Icon(Icons.refresh_rounded, color: Colors.white54)),
+        ],
       ),
+    );
+  }
+
+  Widget _buildBody() {
+    if (_permissionDenied) return const Center(child: Text('İzin Reddedildi', style: TextStyle(color: Colors.white54)));
+    if (_contacts == null) return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
+    if (_contacts!.isEmpty) return const Center(child: Text('Kişi Bulunamadı', style: TextStyle(color: Colors.white54)));
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      itemCount: _contacts!.length,
+      itemBuilder: (context, i) {
+        final c = _contacts![i];
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: const Color(0xFF121212),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withOpacity(0.03)),
+          ),
+          child: ListTile(
+            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
+            leading: CircleAvatar(
+              backgroundColor: Colors.redAccent.withOpacity(0.1),
+              child: Text(c.displayName.isNotEmpty ? c.displayName[0] : '?', style: const TextStyle(color: Colors.redAccent)),
+            ),
+            title: Text(c.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+            subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'No Number', style: const TextStyle(color: Colors.white38)),
+            trailing: IconButton(
+              onPressed: () {},
+              icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 20),
+            ),
+          ),
+        );
+      },
     );
   }
 }

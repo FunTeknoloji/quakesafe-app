@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:font_awesome_flutter/font_awesome_flutter.dart';
 import 'offline_home_screen.dart';
 import 'chat_screen.dart';
 import 'tools_screen.dart';
@@ -15,38 +16,6 @@ class OfflineMainWrapper extends StatefulWidget {
 class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
   int _selectedIndex = 0;
 
-  @override
-  void initState() {
-    super.initState();
-    _checkHardware();
-  }
-
-  Future<void> _checkHardware() async {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _showHardwareWarning();
-    });
-  }
-
-  void _showHardwareWarning() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('Donanım Kontrolü', style: TextStyle(color: Colors.white)),
-        content: const Text(
-          'Uygulamanın çalışması için Bluetooth ve Konum servislerinin açık olduğundan emin olun.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Tamam', style: TextStyle(color: Colors.redAccent)),
-          ),
-        ],
-      ),
-    );
-  }
-
   final List<Widget> _screens = [
     const OfflineHomeScreen(),
     const ChatScreen(),
@@ -58,35 +27,73 @@ class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
+      backgroundColor: Colors.black,
+      body: _screens[_selectedIndex],
+      bottomNavigationBar: _buildModernBottomBar(),
+    );
+  }
+
+  Widget _buildModernBottomBar() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+      decoration: BoxDecoration(
+        color: Colors.black,
+        border: Border(top: BorderSide(color: Colors.white.withOpacity(0.05), width: 0.5)),
       ),
-      bottomNavigationBar: Container(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Colors.black,
-          border: Border(top: BorderSide(color: Colors.white10, width: 0.5)),
+          color: const Color(0xFF151515),
+          borderRadius: BorderRadius.circular(30),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.5),
+              blurRadius: 20,
+              offset: const Offset(0, 10),
+            )
+          ],
         ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: (index) {
-            setState(() {
-              _selectedIndex = index;
-            });
-          },
-          type: BottomNavigationBarType.fixed,
-          backgroundColor: Colors.black,
-          selectedItemColor: Colors.redAccent,
-          unselectedItemColor: Colors.white38,
-          selectedFontSize: 12,
-          unselectedFontSize: 12,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(icon: Icon(Icons.grid_view_rounded), label: 'Ana Sayfa'),
-            BottomNavigationBarItem(icon: Icon(Icons.forum_rounded), label: 'Sohbet'),
-            BottomNavigationBarItem(icon: Icon(Icons.construction_rounded), label: 'Araçlar'),
-            BottomNavigationBarItem(icon: Icon(Icons.people_alt_rounded), label: 'Rehber'),
-            BottomNavigationBarItem(icon: Icon(Icons.account_circle_rounded), label: 'Profil'),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildNavItem(0, Icons.dashboard_rounded, 'Ana Sayfa'),
+            _buildNavItem(1, Icons.chat_bubble_outline_rounded, 'Sohbet'),
+            _buildNavItem(2, Icons.build_circle_outlined, 'Araçlar'),
+            _buildNavItem(3, Icons.people_outline_rounded, 'Rehber'),
+            _buildNavItem(4, Icons.person_outline_rounded, 'Profil'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNavItem(int index, IconData icon, String label) {
+    bool isSelected = _selectedIndex == index;
+    return GestureDetector(
+      onTap: () => setState(() => _selectedIndex = index),
+      behavior: HitTestBehavior.opaque,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: isSelected ? Colors.redAccent.withOpacity(0.1) : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              icon,
+              color: isSelected ? Colors.redAccent : Colors.white38,
+              size: 24,
+            ),
+            if (isSelected)
+              const Padding(
+                padding: EdgeInsets.only(left: 8.0),
+                child: Text(
+                  '', // Compact label or hidden to save space
+                  style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold, fontSize: 12),
+                ),
+              ),
           ],
         ),
       ),

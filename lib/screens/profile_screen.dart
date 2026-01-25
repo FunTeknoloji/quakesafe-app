@@ -18,22 +18,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _loadName() async {
-    String? name = await ProfileService.getUsername();
-    if (name != null) {
-      _nameController.text = name;
-    }
+    final name = await ProfileService.getUsername();
+    if (name != null) _nameController.text = name;
   }
 
   Future<void> _saveName() async {
     await ProfileService.setUsername(_nameController.text.trim());
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Profil güncellendi'),
-          backgroundColor: Colors.green,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-        ),
+        const SnackBar(content: Text('Profil Güncellendi'), backgroundColor: Colors.green),
       );
     }
   }
@@ -44,102 +37,99 @@ class _ProfileScreenState extends State<ProfileScreen> {
       backgroundColor: Colors.black,
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          padding: const EdgeInsets.all(24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const SizedBox(height: 60),
-              Stack(
-                alignment: Alignment.bottomRight,
-                children: [
-                  Container(
-                    width: 120,
-                    height: 120,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.redAccent, Colors.orangeAccent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
+              const Text('PROFİL', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
+              const SizedBox(height: 40),
+              Center(
+                child: Stack(
+                  children: [
+                    CircleAvatar(
+                      radius: 60,
+                      backgroundColor: Colors.redAccent.withOpacity(0.1),
+                      child: const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent),
+                    ),
+                    Positioned(
+                      bottom: 0,
+                      right: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
+                        child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
                       ),
-                      shape: BoxShape.circle,
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.redAccent.withOpacity(0.4),
-                          blurRadius: 20,
-                          offset: const Offset(0, 10),
-                        ),
-                      ],
                     ),
-                    child: Center(
-                      child: Icon(Icons.person_rounded, size: 60, color: Colors.white),
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(Icons.edit_rounded, size: 16, color: Colors.black),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 40),
-              Text(
-                'KİMLİK BİLGİLERİ',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white54,
-                  letterSpacing: 1.2,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Container(
-                decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.05),
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: Colors.white.withOpacity(0.1)),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: TextField(
-                  controller: _nameController,
-                  style: const TextStyle(color: Colors.white, fontSize: 18),
-                  decoration: InputDecoration(
-                    hintText: 'Adınız ve Soyadınız',
-                    hintStyle: TextStyle(color: Colors.white24),
-                    border: InputBorder.none,
-                    icon: Icon(Icons.badge_rounded, color: Colors.redAccent),
-                  ),
+                  ],
                 ),
               ),
               const SizedBox(height: 40),
+              _buildLabel('GÖRÜNÜR ADINIZ'),
+              const SizedBox(height: 12),
+              _buildTextField(_nameController, 'Adınızı girin...'),
+              const SizedBox(height: 40),
+              _buildLabel('CİHAZ BİLGİLERİ'),
+              const SizedBox(height: 12),
+              _buildInfoTile('Bağlantı Türü', 'P2P Mesh'),
+              _buildInfoTile('Durum', 'Aktif'),
+              const SizedBox(height: 60),
               SizedBox(
                 width: double.infinity,
-                height: 60,
+                height: 56,
                 child: ElevatedButton(
                   onPressed: _saveName,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-                    elevation: 0,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                  child: const Text(
-                    'PROFİLİ KAYDET',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w900, letterSpacing: 1),
-                  ),
+                  child: const Text('DEĞİŞİKLİKLERİ KAYDET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
                 ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Bu isim çevrimdışı sohbette diğer cihazlara görünecektir.',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.white38, fontSize: 13),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildLabel(String text) {
+    return Text(text, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1));
+  }
+
+  Widget _buildTextField(TextEditingController controller, String hint) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF121212),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withOpacity(0.05)),
+      ),
+      child: TextField(
+        controller: controller,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          hintText: hint,
+          hintStyle: const TextStyle(color: Colors.white24),
+          contentPadding: const EdgeInsets.all(20),
+          border: InputBorder.none,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoTile(String label, String value) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: const Color(0xFF121212),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.white70)),
+          Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ],
       ),
     );
   }

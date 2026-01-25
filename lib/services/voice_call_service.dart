@@ -25,6 +25,8 @@ class VoiceCallService {
     _recorder.start();
 
     _recorderSubscription = _recorder.audioStream.listen((Uint8List data) {
+      // Send audio data in chunks.
+      // In a real scenario, we might want to compress this.
       Nearby().sendBytesPayload(endpointId, data);
     });
   }
@@ -42,9 +44,15 @@ class VoiceCallService {
     _recorder.stop();
     _player.stop();
     _recorderSubscription?.cancel();
+    _recorderSubscription = null;
   }
 
   Future<void> playAudioFile(String path) async {
     await _audioPlayer.play(DeviceFileSource(path));
+  }
+
+  void dispose() {
+    _audioPlayer.dispose();
+    stopCall();
   }
 }
