@@ -56,7 +56,7 @@ dependencies:
   webview_flutter_android: ^4.10.11
   font_awesome_flutter: ^10.7.0
   http: ^1.2.1
-  record: ^5.1.0
+  record: ^6.1.2
   open_filex: ^4.5.0
   dio: ^5.5.0+1
 
