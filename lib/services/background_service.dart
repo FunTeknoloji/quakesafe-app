@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:ui';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
 import 'package:nearby_connections/nearby_connections.dart';
@@ -38,6 +39,14 @@ class BackgroundService {
 
   @pragma('vm:entry-point')
   static void onStart(ServiceInstance service) async {
+    try {
+      _onStartLogic(service);
+    } catch (e) {
+      debugPrint('Background Service onStart Error: $e');
+    }
+  }
+
+  static void _onStartLogic(ServiceInstance service) async {
     DartPluginRegistrant.ensureInitialized();
 
     if (service is AndroidServiceInstance) {
@@ -147,14 +156,16 @@ class BackgroundService {
     }
 
     Timer.periodic(const Duration(seconds: 1), (timer) async {
-      if (service is AndroidServiceInstance) {
-        if (await service.isForegroundService()) {
-          service.setForegroundNotificationInfo(
-            title: "QuakeSafe Mesh Aktif",
-            content: "Bağlantılar taranıyor ve korunuyor.",
-          );
+      try {
+        if (service is AndroidServiceInstance) {
+          if (await service.isForegroundService()) {
+            service.setForegroundNotificationInfo(
+              title: "QuakeSafe Mesh Aktif",
+              content: "Bağlantılar taranıyor ve korunuyor.",
+            );
+          }
         }
-      }
+      } catch (e) {}
     });
   }
 }

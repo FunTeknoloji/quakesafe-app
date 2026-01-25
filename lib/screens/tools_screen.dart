@@ -40,18 +40,24 @@ class _ToolsScreenState extends State<ToolsScreen> {
   }
 
   void _initSensors() {
-    final compassStream = FlutterCompass.events;
-    if (compassStream == null) {
-      setState(() => _hasCompass = false);
-    } else {
-      compassStream.listen((event) {
-        if (mounted) {
-          setState(() {
-            _heading = event.heading;
-            if (event.heading == null) _hasCompass = false;
-          });
-        }
-      });
+    try {
+      final compassStream = FlutterCompass.events;
+      if (compassStream == null) {
+        setState(() => _hasCompass = false);
+      } else {
+        compassStream.listen((event) {
+          if (mounted) {
+            setState(() {
+              _heading = event.heading;
+              if (event.heading == null) _hasCompass = false;
+            });
+          }
+        }, onError: (e) {
+          if (mounted) setState(() => _hasCompass = false);
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _hasCompass = false);
     }
 
     try {

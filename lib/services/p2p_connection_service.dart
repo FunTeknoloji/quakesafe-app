@@ -32,42 +32,46 @@ class P2PConnectionService extends ChangeNotifier {
 
   void _startBatteryOptimization() {
     Timer.periodic(const Duration(minutes: 1), (timer) async {
-      int level = await Battery().batteryLevel;
-      if (level < 15) {
-        // Extreme power save: stop everything if no active connections
-        if (endpointMap.isEmpty) {
-          Nearby().stopDiscovery();
-          Nearby().stopAdvertising();
-          isDiscovery = false;
-          isAdvertising = false;
+      try {
+        int level = await Battery().batteryLevel;
+        if (level < 15) {
+          // Extreme power save: stop everything if no active connections
+          if (endpointMap.isEmpty) {
+            Nearby().stopDiscovery();
+            Nearby().stopAdvertising();
+            isDiscovery = false;
+            isAdvertising = false;
+            notifyListeners();
+          }
+        } else if (level < 30) {
+          // Low power: toggle discovery to save battery
+          if (isDiscovery) {
+            Nearby().stopDiscovery();
+            isDiscovery = false;
+          } else {
+            if (_currentUserName != null && _onInitCallback != null) {
+              startDiscovery(_currentUserName!, _onInitCallback!);
+            }
+          }
           notifyListeners();
         }
-      } else if (level < 30) {
-        // Low power: toggle discovery to save battery
-        if (isDiscovery) {
-          Nearby().stopDiscovery();
-          isDiscovery = false;
-        } else {
-          if (_currentUserName != null && _onInitCallback != null) {
-            startDiscovery(_currentUserName!, _onInitCallback!);
-          }
-        }
-        notifyListeners();
-      }
+      } catch (e) {}
     });
   }
 
   Future<void> _retryPendingMessages() async {
-    if (endpointMap.isEmpty) return;
-    final messages = await DatabaseService.getMessages();
-    final pending = messages.where((m) => m['isMe'] == 1 && m['status'] == 'pending').toList();
+    try {
+      if (endpointMap.isEmpty) return;
+      final messages = await DatabaseService.getMessages();
+      final pending = messages.where((m) => m['isMe'] == 1 && m['status'] == 'pending').toList();
 
-    for (var msg in pending) {
-      String receiverId = msg['receiver_id'];
-      if (receiverId == 'broadcast' || endpointMap.containsKey(receiverId)) {
-        _sendRaw(msg['id'], receiverId, msg['text'], msg['priority'], msg['message_id']);
+      for (var msg in pending) {
+        String receiverId = msg['receiver_id'];
+        if (receiverId == 'broadcast' || endpointMap.containsKey(receiverId)) {
+          _sendRaw(msg['id'], receiverId, msg['text'], msg['priority'], msg['message_id']);
+        }
       }
-    }
+    } catch (e) {}
   }
 
   Future<void> sendMessage({
@@ -199,10 +203,6 @@ class P2PConnectionService extends ChangeNotifier {
             priority: data['priority'] ?? 'normal',
             messageId: data['id'],
           );
-
-          if (data['priority'] == 'critical') {
-            // High priority logic handled in UI via stream listener
-          }
         }
       }
     } catch (e) {

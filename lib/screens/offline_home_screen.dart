@@ -48,14 +48,24 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
       duration: const Duration(seconds: 2),
     )..repeat(reverse: true);
 
-    _accelerometerSub = accelerometerEventStream().listen((AccelerometerEvent event) {
-      if (mounted) {
-        setState(() {
-          _tiltX = event.x;
-          _tiltY = event.y;
-        });
-      }
-    });
+    _initAccelerometer();
+  }
+
+  void _initAccelerometer() {
+    try {
+      _accelerometerSub = accelerometerEventStream().listen((AccelerometerEvent event) {
+        if (mounted) {
+          setState(() {
+            _tiltX = event.x;
+            _tiltY = event.y;
+          });
+        }
+      }, onError: (e) {
+        debugPrint('Accelerometer error: $e');
+      });
+    } catch (e) {
+      debugPrint('Accelerometer init error: $e');
+    }
   }
 
   Future<void> _loadKit() async {

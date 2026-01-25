@@ -8,15 +8,17 @@ import 'dart:async';
 void main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
-    await NotificationService.init();
+
     try {
-      await BackgroundService.initialize();
+      await NotificationService.init();
     } catch (e) {
-      debugPrint('Background Service Init Error: $e');
+      debugPrint('Notification Service Init Error: $e');
     }
+
     runApp(const QuakeSafeApp());
   }, (error, stack) {
-    debugPrint('Uncaught error: $error');
+    debugPrint('Critical startup error: $error');
+    debugPrint(stack.toString());
   });
 }
 
@@ -52,53 +54,96 @@ class MainGate extends StatefulWidget {
 }
 
 class _MainGateState extends State<MainGate> {
+  bool _isInitializing = true;
+  String _status = 'Başlatılıyor...';
+
   @override
   void initState() {
     super.initState();
-    requestPermissions();
+    _initializeApp();
   }
 
-  Future<void> requestPermissions() async {
-    // Request basic permissions first
+  Future<void> _initializeApp() async {
+    try {
+      setState(() => _status = 'İzinler kontrol ediliyor...');
+      await _requestPermissions();
+
+      setState(() => _status = 'Servisler başlatılıyor...');
+      await Future.delayed(const Duration(seconds: 1));
+      try {
+        await BackgroundService.initialize();
+      } catch (e) {
+        debugPrint('BG Init failed: $e');
+      }
+
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
+    } catch (e) {
+      debugPrint('Init error: $e');
+      if (mounted) {
+        setState(() {
+          _isInitializing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _requestPermissions() async {
+    // Stage 1: Basic Permissions
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
-      Permission.camera,
-      Permission.microphone,
-      Permission.contacts,
-      Permission.storage,
       Permission.notification,
-      Permission.phone,
       Permission.bluetoothScan,
       Permission.bluetoothAdvertise,
       Permission.bluetoothConnect,
       Permission.nearbyWifiDevices,
     ].request();
 
-    // Background location MUST be requested separately after fine location is granted on Android 11+
-    if (statuses[Permission.location] == PermissionStatus.granted) {
-      PermissionStatus backgroundStatus = await Permission.locationAlways.request();
-      statuses[Permission.locationAlways] = backgroundStatus;
-    }
+    // Stage 2: Hardware & Social
+    await [
+      Permission.camera,
+      Permission.microphone,
+      Permission.contacts,
+      Permission.phone,
+      Permission.storage,
+    ].request();
 
-    if (statuses[Permission.locationAlways] != PermissionStatus.granted) {
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Konum İzni'),
-            content: const Text('Arka planda çalışabilmek için konum iznini "Her zaman izin ver" olarak ayarlamanız gerekmektedir.'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(context), child: const Text('TAMAM')),
-              TextButton(onPressed: () => openAppSettings(), child: const Text('AYARLAR')),
-            ],
-          ),
-        );
+    // Stage 3: Background Location (Sequential)
+    if (await Permission.location.isGranted) {
+      if (!await Permission.locationAlways.isGranted) {
+        await Permission.locationAlways.request();
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isInitializing) {
+      return Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const CircularProgressIndicator(color: Colors.redAccent),
+              const SizedBox(height: 24),
+              const Text(
+                'QUAKESAFE',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 4),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _status,
+                style: const TextStyle(color: Colors.white24, fontSize: 12),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return const OfflineMainWrapper();
   }
 }
