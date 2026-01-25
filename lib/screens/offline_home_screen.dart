@@ -8,12 +8,13 @@ class OfflineHomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.all(24.0),
-          color: Colors.black,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
+        child: SingleChildScrollView(
+          child: Container(
+            padding: const EdgeInsets.all(24.0),
+            color: Colors.black,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
               const SizedBox(height: 20),
               Center(
                 child: Image.asset(
@@ -44,43 +45,31 @@ class OfflineHomeScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 20),
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (context) => const ChatScreen()),
-                  );
-                },
-                icon: const Icon(Icons.chat_bubble, color: Colors.white),
-                label: const Text('Çevrimdışı Sohbet', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  padding: const EdgeInsets.all(16),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                ),
+              _buildInfoActionCard(
+                context,
+                'Deprem Bilgileri',
+                'Deprem anında ve sonrasında yapılması gerekenler.',
+                Icons.info,
+                Colors.blueGrey[800]!,
+                () => _showQuakeInfo(context),
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: () {
-                  _showQuakeInfo(context);
-                },
-                icon: const Icon(Icons.info, color: Colors.white),
-                label: const Text('Deprem Bilgileri', style: TextStyle(color: Colors.white)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.blueGrey[800],
-                  padding: const EdgeInsets.all(16),
-                  textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              _buildInfoActionCard(
+                context,
+                'Güvenli Bölgeler',
+                'Yakınınızdaki toplanma alanlarını öğrenin.',
+                Icons.map,
+                Colors.green[900]!,
+                () {}, // Placeholder for future feature
+              ),
+                const SizedBox(height: 20),
+                const Text(
+                  'QuakeSafe Çevrimdışı Modu - Güvende Kalın',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.grey),
                 ),
-              ),
-              const Spacer(),
-              const Text(
-                'QuakeSafe Çevrimdışı Modu - Güvende Kalın',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: Colors.grey),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -132,6 +121,32 @@ class OfflineHomeScreen extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildInfoActionCard(BuildContext context, String title, String subtitle, IconData icon, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(15)),
+        child: Row(
+          children: [
+            Icon(icon, color: Colors.white, size: 32),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title, style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                  Text(subtitle, style: const TextStyle(color: Colors.white70, fontSize: 14)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, color: Colors.white54),
+          ],
+        ),
+      ),
     );
   }
 

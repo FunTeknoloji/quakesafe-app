@@ -43,6 +43,19 @@ dependencies:
   path_provider: ^2.1.5
   flutter_contacts: ^1.1.9+2
   flutter_local_notifications: ^18.0.1
+  flutter_compass: ^0.8.0
+  torch_light: ^1.1.0
+  audioplayers: ^6.0.0
+  url_launcher: ^6.3.0
+  shared_preferences: ^2.2.3
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  share_plus: ^10.0.0
+  sensors_plus: ^6.0.0
+  image_picker: ^1.1.2
+  webview_flutter_android: ^4.10.11
+  font_awesome_flutter: ^10.7.0
+  http: ^1.2.1
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +82,7 @@ flutter_launcher_icons:
 flutter:
   assets:
     - assets/images/logo.png
+    - assets/sounds/
 
   # The following line ensures that the Material Icons font is
   # included with your application, so that you can use the icons in

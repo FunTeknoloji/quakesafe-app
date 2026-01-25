@@ -2,8 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'screens/webview_screen.dart';
-import 'screens/offline_home_screen.dart';
+import 'screens/offline_main_wrapper.dart';
 import 'services/notification_service.dart';
+import 'services/sync_service.dart';
 import 'dart:async';
 
 void main() async {
@@ -80,6 +81,10 @@ class _MainGateState extends State<MainGate> {
       _connectionStatus = newStatus;
     });
 
+    if (newStatus != ConnectivityResult.none) {
+      SyncService.syncData();
+    }
+
     if (oldStatus != ConnectivityResult.none && newStatus == ConnectivityResult.none) {
       NotificationService.showNotification(
         id: 1,
@@ -106,7 +111,7 @@ class _MainGateState extends State<MainGate> {
   @override
   Widget build(BuildContext context) {
     if (_connectionStatus == ConnectivityResult.none) {
-      return const OfflineHomeScreen();
+      return const OfflineMainWrapper();
     } else {
       return const WebViewScreen();
     }

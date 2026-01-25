@@ -1,7 +1,12 @@
+import 'dart:io';
 import 'dart:math';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:nearby_connections/nearby_connections.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../services/database_service.dart';
+import '../services/profile_service.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -12,7 +17,7 @@ class ChatScreen extends StatefulWidget {
 
 class _ChatScreenState extends State<ChatScreen> {
   final Strategy strategy = Strategy.P2P_CLUSTER;
-  final String userName = 'User_${Random().nextInt(10000)}';
+  String userName = 'User_${Random().nextInt(10000)}';
 
   Map<String, ConnectionInfo> endpointMap = {};
   List<ChatMessage> messages = [];
@@ -21,8 +26,30 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void initState() {
     super.initState();
+    _initChat();
+  }
+
+  Future<void> _initChat() async {
+    String? name = await ProfileService.getUsername();
+    if (name != null && name.isNotEmpty) {
+      setState(() {
+        userName = name;
+      });
+    }
+    await _loadMessages();
     startDiscovery();
     startAdvertising();
+  }
+
+  Future<void> _loadMessages() async {
+    final data = await DatabaseService.getMessages();
+    setState(() {
+      messages = data.map((m) => ChatMessage(
+        sender: m['sender'],
+        text: m['text'],
+        isMe: m['isMe'] == 1,
+      )).toList();
+    });
   }
 
   @override
@@ -92,12 +119,14 @@ class _ChatScreenState extends State<ChatScreen> {
     // Auto accept connection
     Nearby().acceptConnection(
       id,
-      onPayLoadRecieved: (id, payload) {
+      onPayLoadRecieved: (id, payload) async {
         if (payload.type == PayloadType.BYTES) {
           String str = String.fromCharCodes(payload.bytes!);
+          String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+          await DatabaseService.insertMessage(sender, str, false);
           setState(() {
             messages.add(ChatMessage(
-              sender: endpointMap[id]?.endpointName ?? 'Unknown',
+              sender: sender,
               text: str,
               isMe: false,
             ));
@@ -107,7 +136,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void sendMessage() {
+  void sendMessage() async {
     String text = _textController.text.trim();
     if (text.isEmpty) return;
 
@@ -116,6 +145,7 @@ class _ChatScreenState extends State<ChatScreen> {
       Nearby().sendBytesPayload(endpointId, bytes);
     }
 
+    await DatabaseService.insertMessage('Ben ($userName)', text, true);
     setState(() {
       messages.add(ChatMessage(
         sender: 'Ben ($userName)',
@@ -124,6 +154,15 @@ class _ChatScreenState extends State<ChatScreen> {
       ));
       _textController.clear();
     });
+  }
+
+  Future<void> _downloadChat() async {
+    String chatLog = messages.map((m) => '${m.sender}: ${m.text}').join('\n');
+    final directory = await getApplicationDocumentsDirectory();
+    final file = File('${directory.path}/quakesafe_chat_log.txt');
+    await file.writeAsString(chatLog);
+
+    await Share.shareXFiles([XFile(file.path)], text: 'QuakeSafe Sohbet Geçmişi');
   }
 
   @override
@@ -138,8 +177,8 @@ class _ChatScreenState extends State<ChatScreen> {
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.arrow_back, color: Colors.white),
-                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    onPressed: _downloadChat,
                   ),
                   Expanded(
                     child: Column(
