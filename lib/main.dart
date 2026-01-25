@@ -6,10 +6,18 @@ import 'services/background_service.dart';
 import 'dart:async';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await NotificationService.init();
-  await BackgroundService.initialize();
-  runApp(const QuakeSafeApp());
+  runZonedGuarded(() async {
+    WidgetsFlutterBinding.ensureInitialized();
+    await NotificationService.init();
+    try {
+      await BackgroundService.initialize();
+    } catch (e) {
+      debugPrint('Background Service Init Error: $e');
+    }
+    runApp(const QuakeSafeApp());
+  }, (error, stack) {
+    debugPrint('Uncaught error: $error');
+  });
 }
 
 class QuakeSafeApp extends StatelessWidget {
@@ -51,9 +59,9 @@ class _MainGateState extends State<MainGate> {
   }
 
   Future<void> requestPermissions() async {
+    // Request basic permissions first
     Map<Permission, PermissionStatus> statuses = await [
       Permission.location,
-      Permission.locationAlways,
       Permission.camera,
       Permission.microphone,
       Permission.contacts,
@@ -65,6 +73,12 @@ class _MainGateState extends State<MainGate> {
       Permission.bluetoothConnect,
       Permission.nearbyWifiDevices,
     ].request();
+
+    // Background location MUST be requested separately after fine location is granted on Android 11+
+    if (statuses[Permission.location] == PermissionStatus.granted) {
+      PermissionStatus backgroundStatus = await Permission.locationAlways.request();
+      statuses[Permission.locationAlways] = backgroundStatus;
+    }
 
     if (statuses[Permission.locationAlways] != PermissionStatus.granted) {
       if (mounted) {

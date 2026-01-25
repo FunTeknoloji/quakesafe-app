@@ -156,7 +156,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
                     const SizedBox(height: 24),
                     _buildEmergencySounds(),
                     const SizedBox(height: 24),
-                    _buildSafeZonesCard(),
+                    _buildUtilityTools(),
                     const SizedBox(height: 40),
                   ],
                 ),
@@ -330,7 +330,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
         ),
         const SizedBox(height: 16),
         _buildActionTile(
-          '112 ACİL SERVİSİ ARA (SOS)',
+          'ACİL SERVİSİ ARA',
           Icons.phone_forwarded_rounded,
           Colors.redAccent,
           () async {
@@ -419,40 +419,57 @@ class _ToolsScreenState extends State<ToolsScreen> {
     );
   }
 
-  Widget _buildSafeZonesCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: const Color(0xFF121212),
-        borderRadius: BorderRadius.circular(32),
-        border: Border.all(color: Colors.blueAccent.withOpacity(0.1)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text('EN YAKIN GÜVENLİ BÖLGELER (ÇEVRİMDIŞI)', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 20),
-          _buildSafeZoneItem('Belediye Parkı', '450m', Colors.greenAccent),
-          _buildSafeZoneItem('Spor Kompleksi', '1.2km', Colors.blueAccent),
-          _buildSafeZoneItem('Afet Toplanma Alanı A-2', '2.8km', Colors.orangeAccent),
-          const SizedBox(height: 12),
-          const Text('*Bu veriler yerel önbellekten yüklenmiştir.', style: TextStyle(color: Colors.white24, fontSize: 9, fontStyle: FontStyle.italic)),
-        ],
-      ),
+  Widget _buildUtilityTools() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('YARDIMCI ARAÇLAR', style: TextStyle(color: Colors.white70, fontSize: 12, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 20),
+        GridView.count(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          crossAxisCount: 3,
+          mainAxisSpacing: 12,
+          crossAxisSpacing: 12,
+          children: [
+            _buildSmallTool('NOTLAR', Icons.note_alt_rounded, Colors.tealAccent, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const NotepadScreen()));
+            }),
+            _buildSmallTool('ZAMANLAYICI', Icons.timer_rounded, Colors.orangeAccent, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const TimerScreen()));
+            }),
+            _buildSmallTool('TAKVİM', Icons.calendar_month_rounded, Colors.blueAccent, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const CalendarScreen()));
+            }),
+            _buildSmallTool('EKRAN IŞIĞI', Icons.light_mode_rounded, Colors.white, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const LightModeScreen()));
+            }),
+            _buildSmallTool('POLİS IŞIĞI', Icons.local_police_rounded, Colors.blue, () {
+              Navigator.push(context, MaterialPageRoute(builder: (context) => const LightModeScreen(isPolice: true)));
+            }),
+          ],
+        ),
+      ],
     );
   }
 
-  Widget _buildSafeZoneItem(String name, String dist, Color color) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(Icons.location_on_rounded, color: color, size: 18),
-          const SizedBox(width: 12),
-          Text(name, style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold)),
-          const Spacer(),
-          Text(dist, style: TextStyle(color: color, fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
+  Widget _buildSmallTool(String label, IconData icon, Color color, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.05),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: color.withOpacity(0.1)),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 8),
+            Text(label, style: TextStyle(color: color, fontSize: 9, fontWeight: FontWeight.bold)),
+          ],
+        ),
       ),
     );
   }

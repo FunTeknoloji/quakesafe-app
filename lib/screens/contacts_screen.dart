@@ -72,7 +72,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
       children: [
         const Text('REHBER', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
         const Spacer(),
-        IconButton(onPressed: () => setState(() => _isSearching = true), icon: const Icon(Icons.search_rounded, color: Colors.white70)),
+        GestureDetector(
+          onTap: () => setState(() => _isSearching = true),
+          child: Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(color: Colors.redAccent.withOpacity(0.1), borderRadius: BorderRadius.circular(12)),
+            child: const Icon(Icons.search_rounded, color: Colors.redAccent, size: 20),
+          ),
+        ),
+        const SizedBox(width: 8),
         IconButton(onPressed: _fetchContacts, icon: const Icon(Icons.refresh_rounded, color: Colors.white54)),
       ],
     );
@@ -129,7 +137,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
             contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
             leading: CircleAvatar(
               backgroundColor: Colors.redAccent.withOpacity(0.1),
-              child: Text(c.displayName.isNotEmpty ? c.displayName[0] : '?', style: const TextStyle(color: Colors.redAccent)),
+              backgroundImage: c.thumbnail != null ? MemoryImage(c.thumbnail!) : null,
+              child: c.thumbnail == null ? Text(c.displayName.isNotEmpty ? c.displayName[0] : '?', style: const TextStyle(color: Colors.redAccent)) : null,
             ),
             title: Text(c.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'No Number', style: const TextStyle(color: Colors.white38)),

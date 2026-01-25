@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
 class DatabaseService {
   static Database? _db;
+  static final _messageController = StreamController<void>.broadcast();
+  static Stream<void> get onMessageAdded => _messageController.stream;
 
   static Future<Database> get db async {
     if (_db != null) return _db!;
@@ -60,6 +63,7 @@ class DatabaseService {
         'extraData': extraData,
       },
     );
+    _messageController.add(null);
   }
 
   static Future<List<Map<String, dynamic>>> getMessages() async {

@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
 import 'dart:ui';
 import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:flutter_background_service_android/flutter_background_service_android.dart';
@@ -49,7 +51,32 @@ class BackgroundService {
     }
 
     service.on('stopService').listen((event) {
+      Nearby().stopAdvertising();
+      Nearby().stopDiscovery();
+      Nearby().stopAllEndpoints();
       service.stopSelf();
+    });
+
+    bool isForeground = true;
+
+    service.on('setForeground').listen((event) {
+      isForeground = true;
+      Nearby().stopAdvertising();
+      Nearby().stopDiscovery();
+      Nearby().stopAllEndpoints();
+    });
+
+    service.on('setBackground').listen((event) {
+      isForeground = false;
+      // Restart Nearby in background if needed
+    });
+
+    service.on('sendMessage').listen((event) {
+      if (event != null) {
+        String id = event['id'];
+        String msg = event['msg'];
+        Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
+      }
     });
 
     // Load user settings
@@ -57,14 +84,44 @@ class BackgroundService {
     final bool notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
     final String userName = prefs.getString('username') ?? 'User';
 
-    // Start Nearby Connections in Background
-    Nearby().startDiscovery(
-      userName,
-      Strategy.P2P_CLUSTER,
-      onEndpointFound: (id, name, serviceId) {
-        Nearby().requestConnection(
+    void startNearby() {
+      if (isForeground) return;
+      try {
+        Nearby().startDiscovery(
           userName,
-          id,
+          Strategy.P2P_CLUSTER,
+          onEndpointFound: (id, name, serviceId) {
+            Nearby().requestConnection(
+              userName,
+              id,
+              onConnectionInitiated: (id, info) {
+                Nearby().acceptConnection(
+                  id,
+                  onPayLoadRecieved: (id, payload) async {
+                    if (payload.type == PayloadType.BYTES) {
+                      String str = String.fromCharCodes(payload.bytes!);
+                      if (notificationsEnabled) {
+                        NotificationService.showNotification(
+                          id: id.hashCode,
+                          title: 'Yeni Mesaj: $name',
+                          body: str,
+                        );
+                      }
+                      DatabaseService.insertMessage(sender: name, text: str, isMe: false);
+                    }
+                  },
+                );
+              },
+              onConnectionResult: (id, status) {},
+              onDisconnected: (id) {},
+            );
+          },
+          onEndpointLost: (id) {},
+        );
+
+        Nearby().startAdvertising(
+          userName,
+          Strategy.P2P_CLUSTER,
           onConnectionInitiated: (id, info) {
             Nearby().acceptConnection(
               id,
@@ -72,13 +129,13 @@ class BackgroundService {
                 if (payload.type == PayloadType.BYTES) {
                   String str = String.fromCharCodes(payload.bytes!);
                   if (notificationsEnabled) {
-                    await NotificationService.showNotification(
+                    NotificationService.showNotification(
                       id: id.hashCode,
-                      title: 'Yeni Mesaj: $name',
+                      title: 'Yeni Mesaj: ${info.endpointName}',
                       body: str,
                     );
                   }
-                  await DatabaseService.insertMessage(sender: name, text: str, isMe: false);
+                  DatabaseService.insertMessage(sender: info.endpointName, text: str, isMe: false);
                 }
               },
             );
@@ -86,34 +143,8 @@ class BackgroundService {
           onConnectionResult: (id, status) {},
           onDisconnected: (id) {},
         );
-      },
-      onEndpointLost: (id) {},
-    );
-
-    Nearby().startAdvertising(
-      userName,
-      Strategy.P2P_CLUSTER,
-      onConnectionInitiated: (id, info) {
-        Nearby().acceptConnection(
-          id,
-          onPayLoadRecieved: (id, payload) async {
-            if (payload.type == PayloadType.BYTES) {
-              String str = String.fromCharCodes(payload.bytes!);
-              if (notificationsEnabled) {
-                await NotificationService.showNotification(
-                  id: id.hashCode,
-                  title: 'Yeni Mesaj: ${info.endpointName}',
-                  body: str,
-                );
-              }
-              await DatabaseService.insertMessage(sender: info.endpointName, text: str, isMe: false);
-            }
-          },
-        );
-      },
-      onConnectionResult: (id, status) {},
-      onDisconnected: (id) {},
-    );
+      } catch (e) {}
+    }
 
     Timer.periodic(const Duration(seconds: 1), (timer) async {
       if (service is AndroidServiceInstance) {

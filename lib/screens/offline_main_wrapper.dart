@@ -1,5 +1,8 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:font_awesome_flutter/font_awesome_flutter.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 import 'offline_home_screen.dart';
 import 'chat_screen.dart';
 import 'tools_screen.dart';
@@ -16,28 +19,60 @@ class OfflineMainWrapper extends StatefulWidget {
   State<OfflineMainWrapper> createState() => _OfflineMainWrapperState();
 }
 
-class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
+class _OfflineMainWrapperState extends State<OfflineMainWrapper> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  Key _chatKey = UniqueKey();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+      FlutterBackgroundService().invoke("setForeground");
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (kIsWeb) return;
+    if (!(Platform.isAndroid || Platform.isIOS)) return;
+
+    if (state == AppLifecycleState.paused) {
+      FlutterBackgroundService().invoke("setBackground");
+    } else if (state == AppLifecycleState.resumed) {
+      FlutterBackgroundService().invoke("setForeground");
+    }
+  }
 
   void setTab(int index) {
     setState(() {
+      if (index == 1 && _selectedIndex != 1) {
+        _chatKey = UniqueKey();
+      }
       _selectedIndex = index;
     });
   }
-
-  final List<Widget> _screens = [
-    const OfflineHomeScreen(),
-    const ChatScreen(),
-    const ToolsScreen(),
-    const ContactsScreen(),
-    const ProfileScreen(),
-  ];
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: _screens[_selectedIndex],
+      body: IndexedStack(
+        index: _selectedIndex,
+        children: [
+          const OfflineHomeScreen(),
+          ChatScreen(key: _chatKey), // Forces new session when entering
+          const ToolsScreen(),
+          const ContactsScreen(),
+          const ProfileScreen(),
+        ],
+      ),
       bottomNavigationBar: _buildModernBottomBar(),
     );
   }
@@ -79,7 +114,7 @@ class _OfflineMainWrapperState extends State<OfflineMainWrapper> {
   Widget _buildNavItem(int index, IconData icon, String label) {
     bool isSelected = _selectedIndex == index;
     return GestureDetector(
-      onTap: () => setState(() => _selectedIndex = index),
+      onTap: () => setTab(index),
       behavior: HitTestBehavior.opaque,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 300),

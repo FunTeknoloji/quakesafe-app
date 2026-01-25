@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -39,11 +40,15 @@ class _ChatScreenState extends State<ChatScreen> {
   bool _isRecording = false;
   String? _activeCallEndpoint;
   bool _isScanning = true;
+  StreamSubscription? _dbSub;
+  late int _sessionStartTime;
 
   @override
   void initState() {
     super.initState();
+    _sessionStartTime = DateTime.now().millisecondsSinceEpoch;
     _p2p.addListener(_onP2PChange);
+    _dbSub = DatabaseService.onMessageAdded.listen((_) => _onNewMessage());
     _initChat();
   }
 
@@ -51,6 +56,30 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) setState(() {
       if (_p2p.endpointMap.isNotEmpty) _isScanning = false;
     });
+  }
+
+  void _onNewMessage() async {
+    final data = await DatabaseService.getMessages();
+    // Filter messages belonging to THIS session
+    final sessionMessages = data.where((m) => m['timestamp'] >= _sessionStartTime).toList();
+    if (mounted) {
+      setState(() {
+        messages = sessionMessages.map((m) => ChatMessage(
+          sender: m['sender'],
+          text: m['text'],
+          isMe: m['isMe'] == 1,
+          timestamp: DateTime.fromMillisecondsSinceEpoch(m['timestamp']),
+          type: m['type'] ?? 'text',
+          extraData: m['extraData'],
+        )).toList();
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(ChatScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Refresh when navigating to this screen if needed
   }
 
   Future<void> _initChat() async {
@@ -70,6 +99,7 @@ class _ChatScreenState extends State<ChatScreen> {
   @override
   void dispose() {
     _p2p.removeListener(_onP2PChange);
+    _dbSub?.cancel();
     super.dispose();
   }
 

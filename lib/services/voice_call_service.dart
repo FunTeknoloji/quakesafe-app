@@ -44,9 +44,10 @@ class VoiceCallService {
       if (_isRecording) _recordSink?.add(data);
 
       // Simple Noise Gate: ignore very low amplitude chunks
+      // Increasing threshold to 15 to reduce background static/parasite
       bool hasSound = false;
       for (int i = 0; i < data.length; i+=2) {
-        if (data[i].abs() > 10) { // Threshold
+        if (data[i] > 15 || data[i] < -15) { // Absolute value check
           hasSound = true;
           break;
         }
