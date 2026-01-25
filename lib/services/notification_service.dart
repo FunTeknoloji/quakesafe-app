@@ -14,6 +14,18 @@ class NotificationService {
     await _notificationsPlugin.initialize(
       initializationSettings,
     );
+
+    // Create background channel explicitly
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      'quakesafe_bg_channel',
+      'QuakeSafe Arka Plan Servisi',
+      description: 'Mesh ağı ve acil durum takibi için kullanılır.',
+      importance: Importance.low,
+    );
+
+    await _notificationsPlugin
+        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
+        ?.createNotificationChannel(channel);
   }
 
   static Future<void> showNotification({

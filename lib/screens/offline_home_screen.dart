@@ -69,16 +69,24 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
   }
 
   Future<void> _loadKit() async {
-    final items = await SurvivalKitService.loadKit();
-    setState(() {
-      _kitItems = items;
-      _isLoadingKit = false;
-    });
+    try {
+      final items = await SurvivalKitService.loadKit();
+      if (mounted) {
+        setState(() {
+          _kitItems = items;
+          _isLoadingKit = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() => _isLoadingKit = false);
+    }
   }
 
   Future<void> _getBattery() async {
-    final level = await _battery.batteryLevel;
-    setState(() => _batteryLevel = level);
+    try {
+      final level = await _battery.batteryLevel;
+      if (mounted) setState(() => _batteryLevel = level);
+    } catch (e) {}
   }
 
   Future<void> _toggleKitItem(String label, bool value) async {
