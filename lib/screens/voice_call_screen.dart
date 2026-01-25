@@ -57,7 +57,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> with SingleTickerProv
 
   void _endCall() {
     widget.voiceCallService.stopCall();
-    Nearby().sendBytesPayload(widget.endpointId, Uint8List.fromList('CMD:VOICE_STOP'.codeUnits));
+    P2PConnectionService().sendProtocolMessage(widget.endpointId, {'type': 'VOICE_SIG', 'cmd': 'STOP'});
     Navigator.pop(context);
   }
 

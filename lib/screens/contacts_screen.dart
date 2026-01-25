@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
@@ -143,7 +144,12 @@ class _ContactsScreenState extends State<ContactsScreen> {
             title: Text(c.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
             subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'No Number', style: const TextStyle(color: Colors.white38)),
             trailing: IconButton(
-              onPressed: () {},
+              onPressed: () async {
+                if (c.phones.isNotEmpty) {
+                  final Uri url = Uri.parse('tel:${c.phones.first.number}');
+                  if (await canLaunchUrl(url)) await launchUrl(url);
+                }
+              },
               icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 20),
             ),
           ),

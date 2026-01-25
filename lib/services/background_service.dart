@@ -20,8 +20,8 @@ class BackgroundService {
         autoStart: true,
         isForegroundMode: true,
         notificationChannelId: 'quakesafe_bg_channel',
-        initialNotificationTitle: 'QuakeSafe Aktif',
-        initialNotificationContent: 'Mesh ağı taranıyor...',
+        initialNotificationTitle: 'QuakeSafe Arka Plan',
+        initialNotificationContent: 'Acil durum takibi aktif.',
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
@@ -70,22 +70,8 @@ class BackgroundService {
 
     service.on('setForeground').listen((event) {
       isForeground = true;
-      Nearby().stopAdvertising();
-      Nearby().stopDiscovery();
-      Nearby().stopAllEndpoints();
-    });
-
-    service.on('setBackground').listen((event) {
-      isForeground = false;
-      // Restart Nearby in background if needed
-    });
-
-    service.on('sendMessage').listen((event) {
-      if (event != null) {
-        String id = event['id'];
-        String msg = event['msg'];
-        Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
-      }
+      // We don't stop anymore, let UI manage it if it wants,
+      // but BackgroundService should generally keep it alive if needed.
     });
 
     // Load user settings
@@ -94,6 +80,7 @@ class BackgroundService {
     final String userName = prefs.getString('username') ?? 'User';
 
     void startNearby() {
+      debugPrint('Background startNearby called. isForeground: $isForeground');
       if (isForeground) return;
       try {
         Nearby().startDiscovery(
@@ -108,15 +95,33 @@ class BackgroundService {
                   id,
                   onPayLoadRecieved: (id, payload) async {
                     if (payload.type == PayloadType.BYTES) {
-                      String str = String.fromCharCodes(payload.bytes!);
-                      if (notificationsEnabled) {
-                        NotificationService.showNotification(
-                          id: id.hashCode,
-                          title: 'Yeni Mesaj: $name',
-                          body: str,
-                        );
-                      }
-                      DatabaseService.insertMessage(sender: name, text: str, isMe: false);
+                      try {
+                        String str = utf8.decode(payload.bytes!);
+                        if (str.startsWith('{')) {
+                          var data = jsonDecode(str);
+                          if (data['type'] == 'MSG') {
+                            if (notificationsEnabled) {
+                              NotificationService.showNotification(
+                                id: data['id'].hashCode,
+                                title: 'Yeni Mesaj: $name',
+                                body: data['text'],
+                              );
+                            }
+                            DatabaseService.insertMessage(
+                              sender: name,
+                              text: data['text'],
+                              isMe: false,
+                              priority: data['priority'] ?? 'normal',
+                              messageId: data['id'],
+                            );
+                          } else if (data['type'] == 'VOICE_SIG' && data['cmd'] == 'START') {
+                            NotificationService.showCallNotification(
+                              id: id.hashCode,
+                              callerName: name,
+                            );
+                          }
+                        }
+                      } catch (e) {}
                     }
                   },
                 );
@@ -136,15 +141,33 @@ class BackgroundService {
               id,
               onPayLoadRecieved: (id, payload) async {
                 if (payload.type == PayloadType.BYTES) {
-                  String str = String.fromCharCodes(payload.bytes!);
-                  if (notificationsEnabled) {
-                    NotificationService.showNotification(
-                      id: id.hashCode,
-                      title: 'Yeni Mesaj: ${info.endpointName}',
-                      body: str,
-                    );
-                  }
-                  DatabaseService.insertMessage(sender: info.endpointName, text: str, isMe: false);
+                      try {
+                        String str = utf8.decode(payload.bytes!);
+                        if (str.startsWith('{')) {
+                          var data = jsonDecode(str);
+                          if (data['type'] == 'MSG') {
+                            if (notificationsEnabled) {
+                              NotificationService.showNotification(
+                                id: data['id'].hashCode,
+                                title: 'Yeni Mesaj: ${info.endpointName}',
+                                body: data['text'],
+                              );
+                            }
+                            DatabaseService.insertMessage(
+                              sender: info.endpointName,
+                              text: data['text'],
+                              isMe: false,
+                              priority: data['priority'] ?? 'normal',
+                              messageId: data['id'],
+                            );
+                          } else if (data['type'] == 'VOICE_SIG' && data['cmd'] == 'START') {
+                            NotificationService.showCallNotification(
+                              id: id.hashCode,
+                              callerName: info.endpointName,
+                            );
+                          }
+                        }
+                      } catch (e) {}
                 }
               },
             );
@@ -155,13 +178,28 @@ class BackgroundService {
       } catch (e) {}
     }
 
-    Timer.periodic(const Duration(seconds: 1), (timer) async {
+    service.on('setBackground').listen((event) {
+      isForeground = false;
+      startNearby();
+    });
+
+    service.on('sendMessage').listen((event) {
+      if (event != null) {
+        String id = event['id'];
+        String msg = event['msg'];
+        Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
+      }
+    });
+
+    // Update notification less frequently and with lower impact
+    Timer.periodic(const Duration(seconds: 10), (timer) async {
       try {
         if (service is AndroidServiceInstance) {
           if (await service.isForegroundService()) {
+            // Keep it minimal as requested
             service.setForegroundNotificationInfo(
-              title: "QuakeSafe Mesh Aktif",
-              content: "Bağlantılar taranıyor ve korunuyor.",
+              title: "QuakeSafe Koruma Modu",
+              content: "Acil durum ağı arka planda aktif.",
             );
           }
         }

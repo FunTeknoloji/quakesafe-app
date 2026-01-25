@@ -14,6 +14,7 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path/path.dart' as p;
 import '../services/database_service.dart';
+import '../services/notification_service.dart';
 import '../services/profile_service.dart';
 import '../services/voice_call_service.dart';
 import '../services/p2p_connection_service.dart';
@@ -95,8 +96,9 @@ class _ChatScreenState extends State<ChatScreen> {
       messages = [];
     });
     await _voiceCallService.init();
-    _p2p.startDiscovery(userName, onConnectionInitiated);
-    _p2p.startAdvertising(userName, onConnectionInitiated);
+
+    // Use the new robust initMesh
+    _p2p.initMesh(userName, onConnectionInitiated);
   }
 
   @override
@@ -122,18 +124,16 @@ class _ChatScreenState extends State<ChatScreen> {
 
           String str = utf8.decode(bytes);
 
-          // Handle legacy commands or voice signaling
-          if (str.startsWith('CMD:')) {
-            _handleCommand(id, str);
-            return;
-          }
-
           // Handle new JSON format in Service
           if (str.startsWith('{')) {
             try {
               var data = jsonDecode(str);
               if (data['type'] == 'FILE_META') {
                 _incomingFileMeta[data['payloadId']] = data;
+                return;
+              }
+              if (data['type'] == 'VOICE_SIG') {
+                _handleVoiceSignaling(id, data['cmd']);
                 return;
               }
               // Pass to reliable service
@@ -154,14 +154,16 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  void _handleCommand(String id, String cmd) {
-    if (cmd == 'CMD:VOICE_START') {
+  void _handleVoiceSignaling(String id, String cmd) {
+    if (cmd == 'START') {
+      String caller = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+      NotificationService.showCallNotification(id: id.hashCode, callerName: caller);
       _showIncomingCallUI(id);
-    } else if (cmd == 'CMD:VOICE_ACCEPT') {
+    } else if (cmd == 'ACCEPT') {
       _initiateCall(id);
-    } else if (cmd == 'CMD:VOICE_REJECT') {
+    } else if (cmd == 'REJECT') {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Çağrı reddedildi')));
-    } else if (cmd == 'CMD:VOICE_STOP') {
+    } else if (cmd == 'STOP') {
       if (_isCalling) Navigator.pop(context);
       setState(() { _isCalling = false; _activeCallEndpoint = null; });
       _voiceCallService.stopCall();
@@ -173,12 +175,12 @@ class _ChatScreenState extends State<ChatScreen> {
       callerName: _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen',
       onAccept: () {
         Navigator.pop(context);
-        Nearby().sendBytesPayload(id, Uint8List.fromList('CMD:VOICE_ACCEPT'.codeUnits));
+        _p2p.sendProtocolMessage(id, {'type': 'VOICE_SIG', 'cmd': 'ACCEPT'});
         _initiateCall(id);
       },
       onReject: () {
         Navigator.pop(context);
-        Nearby().sendBytesPayload(id, Uint8List.fromList('CMD:VOICE_REJECT'.codeUnits));
+        _p2p.sendProtocolMessage(id, {'type': 'VOICE_SIG', 'cmd': 'REJECT'});
       },
     )));
   }
@@ -224,7 +226,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _requestCall(String targetId) {
-    Nearby().sendBytesPayload(targetId, Uint8List.fromList('CMD:VOICE_START'.codeUnits));
+    _p2p.sendProtocolMessage(targetId, {'type': 'VOICE_SIG', 'cmd': 'START'});
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Çağrı isteği gönderildi...')));
   }
 
@@ -354,73 +356,23 @@ class _ChatScreenState extends State<ChatScreen> {
       body: SafeArea(
         child: Stack(
           children: [
-            Row(
+            Column(
               children: [
-                _buildTimeSidebar(),
+                _buildTacticalHeader(),
                 Expanded(
-                  child: Column(
-                    children: [
-                      _buildTacticalHeader(),
-                      Expanded(
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(20),
-                          itemCount: messages.length,
-                          itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
-                        ),
-                      ),
-                      _buildTacticalInput(),
-                    ],
+                  child: ListView.builder(
+                    padding: const EdgeInsets.all(20),
+                    itemCount: messages.length,
+                    itemBuilder: (context, i) => _buildMessageBubble(messages[i]),
                   ),
                 ),
+                _buildTacticalInput(),
               ],
             ),
             if (_isScanning && _p2p.endpointMap.isEmpty) _buildScanningOverlay(),
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildTimeSidebar() {
-    return StreamBuilder(
-      stream: Stream.periodic(const Duration(seconds: 1)),
-      builder: (context, snapshot) {
-        final now = DateTime.now();
-        return Container(
-          width: 60,
-          decoration: BoxDecoration(
-            color: const Color(0xFF080808),
-            border: Border(right: BorderSide(color: Colors.white.withOpacity(0.05))),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              _buildTimeElement(DateFormat('HH').format(now), 'SAAT'),
-              const SizedBox(height: 20),
-              _buildTimeElement(DateFormat('mm').format(now), 'DAK'),
-              const SizedBox(height: 20),
-              _buildTimeElement(DateFormat('ss').format(now), 'SN'),
-              const SizedBox(height: 40),
-              RotatedBox(
-                quarterTurns: 3,
-                child: Text(
-                  DateFormat('dd/MM/yyyy').format(now),
-                  style: const TextStyle(color: Colors.white24, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildTimeElement(String value, String label) {
-    return Column(
-      children: [
-        Text(value, style: const TextStyle(color: Colors.redAccent, fontSize: 20, fontWeight: FontWeight.w900)),
-        Text(label, style: const TextStyle(color: Colors.white10, fontSize: 8, fontWeight: FontWeight.bold)),
-      ],
     );
   }
 
@@ -454,6 +406,13 @@ class _ChatScreenState extends State<ChatScreen> {
       decoration: BoxDecoration(color: const Color(0xFF0A0A0A), border: Border(bottom: BorderSide(color: Colors.white.withOpacity(0.05)))),
       child: Row(
         children: [
+          IconButton(
+            icon: const Icon(Icons.refresh_rounded, color: Colors.blueAccent, size: 20),
+            onPressed: () {
+              _p2p.initMesh(userName, onConnectionInitiated);
+              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ağ yenileniyor...')));
+            },
+          ),
           Expanded(
             child: GestureDetector(
               onTap: _showConnectedDevicesPopup,

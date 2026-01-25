@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_contacts/flutter_contacts.dart';
 import '../services/profile_service.dart';
 import 'recordings_screen.dart';
 
@@ -14,7 +15,10 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _sosMessageController = TextEditingController();
   String? _photoPath;
+  String? _emergencyContactName;
+  String? _emergencyContactNumber;
   bool _notificationsEnabled = true;
 
   @override
@@ -31,18 +35,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       if (name != null) _nameController.text = name;
       _photoPath = photo;
       _notificationsEnabled = prefs.getBool('notifications_enabled') ?? true;
+      _emergencyContactName = prefs.getString('emergency_contact_name');
+      _emergencyContactNumber = prefs.getString('emergency_contact_number');
+      _sosMessageController.text = prefs.getString('custom_sos_message') ?? 'ACİL DURUM! Yardıma ihtiyacım var. Konumum:';
     });
   }
 
-  Future<void> _saveProfile() async {
+  Future<void> _saveProfile({bool showInfo = true}) async {
     await ProfileService.setUsername(_nameController.text.trim());
     if (_photoPath != null) await ProfileService.setProfilePhoto(_photoPath!);
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('notifications_enabled', _notificationsEnabled);
+    await prefs.setString('custom_sos_message', _sosMessageController.text);
 
-    if (mounted) {
+    if (showInfo && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Profil Başarıyla Kaydedildi'), backgroundColor: Colors.green),
+        const SnackBar(content: Text('Değişiklikler Kaydedildi'), backgroundColor: Colors.green),
       );
     }
   }
@@ -100,7 +108,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
               const SizedBox(height: 40),
               _buildLabel('GÖRÜNÜR ADINIZ'),
               const SizedBox(height: 12),
-              _buildTextField(_nameController, 'Adınızı girin...'),
+              _buildTextField(_nameController, 'Adınızı girin...', autoSave: true),
+              const SizedBox(height: 40),
+              _buildLabel('ACİL DURUM AYARLARI'),
+              const SizedBox(height: 12),
+              _buildEmergencyContactTile(),
+              const SizedBox(height: 16),
+              _buildLabel('ÖZEL ACİL DURUM MESAJI'),
+              const SizedBox(height: 12),
+              _buildTextField(_sosMessageController, 'SOS mesajınızı özelleştirin...', autoSave: true),
               const SizedBox(height: 40),
               _buildLabel('UYGULAMA AYARLARI'),
               const SizedBox(height: 12),
@@ -159,7 +175,56 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Text(text, style: const TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1));
   }
 
-  Widget _buildTextField(TextEditingController controller, String hint) {
+  Widget _buildEmergencyContactTile() {
+    return GestureDetector(
+      onTap: _pickEmergencyContact,
+      child: Container(
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFF121212),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.redAccent.withOpacity(0.1)),
+        ),
+        child: Row(
+          children: [
+            const Icon(Icons.emergency_share_rounded, color: Colors.redAccent),
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Acil Durum Kişisi', style: TextStyle(color: Colors.white70, fontSize: 13, fontWeight: FontWeight.bold)),
+                  Text(
+                    _emergencyContactName ?? 'Kişi seçilmedi',
+                    style: TextStyle(color: _emergencyContactName != null ? Colors.white : Colors.white24, fontSize: 14),
+                  ),
+                ],
+              ),
+            ),
+            const Icon(Icons.arrow_forward_ios_rounded, color: Colors.white24, size: 14),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _pickEmergencyContact() async {
+    if (await FlutterContacts.requestPermission()) {
+      final contact = await FlutterContacts.openExternalPick();
+      if (contact != null && contact.phones.isNotEmpty) {
+        final prefs = await SharedPreferences.getInstance();
+        setState(() {
+          _emergencyContactName = contact.displayName;
+          _emergencyContactNumber = contact.phones.first.number;
+        });
+        await prefs.setString('emergency_contact_name', contact.displayName);
+        await prefs.setString('emergency_contact_number', contact.phones.first.number);
+        _saveProfile();
+      }
+    }
+  }
+
+  Widget _buildTextField(TextEditingController controller, String hint, {bool autoSave = false}) {
     return Container(
       decoration: BoxDecoration(
         color: const Color(0xFF121212),
@@ -169,7 +234,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       child: TextField(
         controller: controller,
         style: const TextStyle(color: Colors.white),
-        onChanged: (v) => _saveProfile(),
+        onChanged: (v) {
+          if (autoSave) _saveProfile(showInfo: false);
+        },
         decoration: InputDecoration(
           hintText: hint,
           hintStyle: const TextStyle(color: Colors.white24),

@@ -4,10 +4,12 @@ import 'screens/offline_main_wrapper.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'dart:async';
+import 'package:intl/date_symbol_data_local.dart';
 
 void main() async {
   runZonedGuarded(() async {
     WidgetsFlutterBinding.ensureInitialized();
+    await initializeDateFormatting('tr_TR', null);
 
     try {
       await NotificationService.init();

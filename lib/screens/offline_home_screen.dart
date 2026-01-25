@@ -10,6 +10,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:battery_plus/battery_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/database_service.dart';
 import '../services/survival_kit_service.dart';
 import '../services/p2p_connection_service.dart';
@@ -255,9 +256,9 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
       childAspectRatio: 1.6,
       children: [
         _buildToolCard('FENER', _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded, Colors.orangeAccent, _toggleFlashlight),
+        _buildToolCard('ACİL SMS', Icons.sms_failed_rounded, Colors.redAccent, _sendEmergencySMS),
         _buildToolCard('ACİL DÜDÜK', Icons.air_rounded, Colors.blueAccent, _playWhistle),
         _buildToolCard('SİREN', Icons.warning_amber_rounded, Colors.purpleAccent, _playSiren),
-        _buildToolCard('KONUM PAYLAŞ', Icons.share_location_rounded, Colors.greenAccent, _shareLocation),
       ],
     );
   }
@@ -269,6 +270,30 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
       P2PConnectionService().broadcast('📍 KONUMUM: $url');
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Konumunuz paylaşıldı')));
     } catch (e) {}
+  }
+
+  void _sendEmergencySMS() async {
+    final prefs = await SharedPreferences.getInstance();
+    final number = prefs.getString('emergency_contact_number');
+    final customMsg = prefs.getString('custom_sos_message') ?? 'ACİL DURUM! Yardıma ihtiyacım var. Konumum:';
+
+    if (number == null || number.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Acil durum kişisi ayarlanmamış! Lütfen Profilden ayarlayın.'), backgroundColor: Colors.red),
+      );
+      return;
+    }
+
+    try {
+      Position pos = await Geolocator.getCurrentPosition();
+      String url = 'https://www.google.com/maps?q=${pos.latitude},${pos.longitude}';
+      final Uri uri = Uri.parse('sms:$number?body=$customMsg $url');
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri);
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('SMS gönderilemedi')));
+    }
   }
 
   void _playWhistle() async {

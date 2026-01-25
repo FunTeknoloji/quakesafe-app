@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'database_service.dart';
+import 'notification_service.dart';
 
 class P2PConnectionService extends ChangeNotifier {
   static final P2PConnectionService _instance = P2PConnectionService._internal();
@@ -18,6 +19,7 @@ class P2PConnectionService extends ChangeNotifier {
   Map<String, int> connectionQuality = {}; // Stability score
   bool isAdvertising = false;
   bool isDiscovery = false;
+  bool isInitializing = false;
   String? _currentUserName;
   Function(String, ConnectionInfo)? _onInitCallback;
 
@@ -28,6 +30,16 @@ class P2PConnectionService extends ChangeNotifier {
       _retryPendingMessages();
     });
     _startBatteryOptimization();
+    _startMeshKeepAlive();
+  }
+
+  void _startMeshKeepAlive() {
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      if (endpointMap.isEmpty && !isInitializing && _currentUserName != null) {
+        debugPrint('Mesh Keep-Alive: No connections found, restarting mesh...');
+        initMesh(_currentUserName!, _onInitCallback ?? (id, info) {});
+      }
+    });
   }
 
   void _startBatteryOptimization() {
@@ -116,7 +128,7 @@ class P2PConnectionService extends ChangeNotifier {
 
     if (success) {
       await DatabaseService.updateMessageStatus(dbId, 'sent');
-      if (receiverId != 'broadcast') {
+      if (receiverId != 'broadcast' && receiverId != 'all') {
         connectionQuality[receiverId] = (connectionQuality[receiverId] ?? 10) + 1;
       }
     } else {
@@ -203,6 +215,12 @@ class P2PConnectionService extends ChangeNotifier {
             priority: data['priority'] ?? 'normal',
             messageId: data['id'],
           );
+
+          NotificationService.showNotification(
+            id: data['id'].hashCode,
+            title: 'Yeni Mesaj: $sender',
+            body: data['text'],
+          );
         }
       }
     } catch (e) {
@@ -210,70 +228,96 @@ class P2PConnectionService extends ChangeNotifier {
     }
   }
 
-  void startAdvertising(String userName, Function(String, ConnectionInfo) onInit) async {
+  Future<void> initMesh(String userName, Function(String, ConnectionInfo) onInit) async {
+    if (isInitializing) return;
+    isInitializing = true;
+    _currentUserName = userName;
+    _onInitCallback = onInit;
+
+    await stopAll();
+
+    await startAdvertising(userName, onInit);
+    await startDiscovery(userName, onInit);
+
+    isInitializing = false;
+    notifyListeners();
+  }
+
+  Future<void> startAdvertising(String userName, Function(String, ConnectionInfo) onInit) async {
     _currentUserName = userName;
     _onInitCallback = onInit;
     if (isAdvertising) return;
     try {
-      isAdvertising = await Nearby().startAdvertising(
+      bool success = await Nearby().startAdvertising(
         userName,
         strategy,
         onConnectionInitiated: (id, info) {
+          debugPrint('Connection Initiated: $id');
           endpointMap[id] = info;
           notifyListeners();
           onInit(id, info);
         },
         onConnectionResult: (id, status) {
+          debugPrint('Connection Result for $id: $status');
           if (status == Status.CONNECTED) {
             _syncWithPeer(id);
           } else {
             endpointMap.remove(id);
-            notifyListeners();
           }
+          notifyListeners();
         },
         onDisconnected: (id) {
+          debugPrint('Disconnected: $id');
           endpointMap.remove(id);
           notifyListeners();
         },
       );
+      isAdvertising = success;
     } catch (e) {
       debugPrint('Adv Error: $e');
     }
   }
 
-  void startDiscovery(String userName, Function(String, ConnectionInfo) onInit) async {
+  Future<void> startDiscovery(String userName, Function(String, ConnectionInfo) onInit) async {
     _currentUserName = userName;
     _onInitCallback = onInit;
     if (isDiscovery) return;
     try {
-      isDiscovery = await Nearby().startDiscovery(
+      bool success = await Nearby().startDiscovery(
         userName,
         strategy,
         onEndpointFound: (id, name, serviceId) {
+          debugPrint('Endpoint Found: $id ($name)');
           Nearby().requestConnection(
             userName,
             id,
             onConnectionInitiated: (id, info) {
+              debugPrint('Connection Initiated: $id');
               endpointMap[id] = info;
               notifyListeners();
               onInit(id, info);
             },
             onConnectionResult: (id, status) {
+              debugPrint('Connection Result for $id: $status');
               if (status == Status.CONNECTED) {
                 _syncWithPeer(id);
               } else {
                 endpointMap.remove(id);
-                notifyListeners();
               }
+              notifyListeners();
             },
             onDisconnected: (id) {
+              debugPrint('Disconnected: $id');
               endpointMap.remove(id);
               notifyListeners();
             },
           );
         },
-        onEndpointLost: (id) {},
+        onEndpointLost: (id) {
+          debugPrint('Endpoint Lost: $id');
+        },
       );
+      isDiscovery = success;
     } catch (e) {
       debugPrint('Disc Error: $e');
     }
@@ -283,10 +327,15 @@ class P2PConnectionService extends ChangeNotifier {
     sendMessage(text: message, receiverId: 'broadcast');
   }
 
-  void stopAll() {
-    Nearby().stopAdvertising();
-    Nearby().stopDiscovery();
-    Nearby().stopAllEndpoints();
+  Future<void> sendProtocolMessage(String targetId, Map<String, dynamic> data) async {
+    String jsonStr = jsonEncode(data);
+    await Nearby().sendBytesPayload(targetId, Uint8List.fromList(utf8.encode(jsonStr)));
+  }
+
+  Future<void> stopAll() async {
+    await Nearby().stopAdvertising();
+    await Nearby().stopDiscovery();
+    await Nearby().stopAllEndpoints();
     endpointMap.clear();
     isAdvertising = false;
     isDiscovery = false;

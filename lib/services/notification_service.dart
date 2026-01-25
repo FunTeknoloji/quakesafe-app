@@ -1,4 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/material.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin = FlutterLocalNotificationsPlugin();
@@ -32,15 +33,47 @@ class NotificationService {
     required int id,
     required String title,
     required String body,
+    String? channelId,
   }) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
-      'quakesafe_channel',
+      channelId ?? 'quakesafe_channel',
       'QuakeSafe Notifications',
       channelDescription: 'Emergency notifications for QuakeSafe',
       importance: Importance.max,
       priority: Priority.high,
       showWhen: true,
+      fullScreenIntent: channelId == 'quakesafe_call_channel',
+      category: channelId == 'quakesafe_call_channel' ? AndroidNotificationCategory.call : null,
+    );
+
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
+      android: androidPlatformChannelSpecifics,
+    );
+
+    await _notificationsPlugin.show(
+      id,
+      title,
+      body,
+      platformChannelSpecifics,
+    );
+  }
+
+  static Future<void> showCallNotification({
+    required int id,
+    required String callerName,
+  }) async {
+    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+        AndroidNotificationDetails(
+      'quakesafe_call_channel',
+      'Gelen Çağrılar',
+      channelDescription: 'Acil durum sesli çağrıları',
+      importance: Importance.max,
+      priority: Priority.max,
+      fullScreenIntent: true,
+      category: AndroidNotificationCategory.call,
+      ongoing: true,
+      color: Color(0xFFFF5252),
     );
 
     const NotificationDetails platformChannelSpecifics = NotificationDetails(
@@ -49,8 +82,8 @@ class NotificationService {
 
     await _notificationsPlugin.show(
       id,
-      title,
-      body,
+      'GELEN ÇAĞRI',
+      '$callerName sizi arıyor...',
       platformChannelSpecifics,
     );
   }

@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import '../../services/timer_service.dart';
 
 class TimerScreen extends StatefulWidget {
   const TimerScreen({super.key});
@@ -9,53 +9,21 @@ class TimerScreen extends StatefulWidget {
 }
 
 class _TimerScreenState extends State<TimerScreen> {
-  int _seconds = 0;
-  Timer? _timer;
-  bool _isRunning = false;
-
-  void _toggleTimer() {
-    if (_isRunning) {
-      _timer?.cancel();
-    } else {
-      _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        setState(() => _seconds++);
-      });
-    }
-    setState(() => _isRunning = !_isRunning);
-  }
-
-  void _reset() {
-    _timer?.cancel();
-    setState(() {
-      _seconds = 0;
-      _isRunning = false;
-    });
-  }
-
-  String _formatTime(int totalSeconds) {
-    int h = totalSeconds ~/ 3600;
-    int m = (totalSeconds % 3600) ~/ 60;
-    int s = totalSeconds % 60;
-    return '${h.toString().padLeft(2, '0')}:${m.toString().padLeft(2, '0')}:${s.toString().padLeft(2, '0')}';
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
-  }
+  final TimerService _timerService = TimerService();
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(title: const Text('ZAMANLAYICI'), backgroundColor: Colors.black),
-      body: Center(
+      body: ListenableBuilder(
+        listenable: _timerService,
+        builder: (context, _) => Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
-              _formatTime(_seconds),
+              _timerService.formatTime(_timerService.seconds),
               style: const TextStyle(color: Colors.white, fontSize: 64, fontWeight: FontWeight.w900, fontFamily: 'monospace'),
             ),
             const SizedBox(height: 60),
@@ -63,20 +31,21 @@ class _TimerScreenState extends State<TimerScreen> {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildBtn(
-                  icon: _isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
-                  color: _isRunning ? Colors.orangeAccent : Colors.greenAccent,
-                  onTap: _toggleTimer,
+                  icon: _timerService.isRunning ? Icons.pause_rounded : Icons.play_arrow_rounded,
+                  color: _timerService.isRunning ? Colors.orangeAccent : Colors.greenAccent,
+                  onTap: _timerService.toggleTimer,
                 ),
                 const SizedBox(width: 40),
                 _buildBtn(
                   icon: Icons.refresh_rounded,
                   color: Colors.redAccent,
-                  onTap: _reset,
+                  onTap: _timerService.reset,
                 ),
               ],
             ),
           ],
         ),
+      ),
       ),
     );
   }
