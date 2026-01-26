@@ -416,7 +416,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(devices[i].endpointName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                            const Text('P2P Mesh Link', style: TextStyle(color: Colors.white24, fontSize: 9)),
+                            const Text('P2P Mesh Bağlantısı', style: TextStyle(color: Colors.white24, fontSize: 9)),
                           ],
                         ),
                         const Spacer(),

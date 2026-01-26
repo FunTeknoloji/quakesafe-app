@@ -69,8 +69,9 @@ class NotificationService {
   static Future<void> showCallNotification({
     required int id,
     required String callerName,
+    bool ongoing = true,
   }) async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
+    final AndroidNotificationDetails androidPlatformChannelSpecifics =
         AndroidNotificationDetails(
       'quakesafe_call_channel',
       'Gelen Çağrılar',
@@ -79,11 +80,12 @@ class NotificationService {
       priority: Priority.max,
       fullScreenIntent: true,
       category: AndroidNotificationCategory.call,
-      ongoing: true,
-      color: Color(0xFFFF5252),
+      ongoing: ongoing,
+      autoCancel: !ongoing,
+      color: const Color(0xFFFF5252),
     );
 
-    const NotificationDetails platformChannelSpecifics = NotificationDetails(
+    final NotificationDetails platformChannelSpecifics = NotificationDetails(
       android: androidPlatformChannelSpecifics,
     );
 

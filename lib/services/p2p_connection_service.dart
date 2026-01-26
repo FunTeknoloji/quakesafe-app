@@ -15,6 +15,7 @@ class P2PConnectionService extends ChangeNotifier {
     _startQueueProcessor();
   }
 
+  static const String _serviceId = "com.quakesafe.app.mesh";
   Strategy strategy = Strategy.P2P_CLUSTER;
   Map<String, ConnectionInfo> endpointMap = {};
   Map<String, int> connectionQuality = {}; // Stability score
@@ -237,11 +238,13 @@ class P2PConnectionService extends ChangeNotifier {
 
     // Load strategy from settings
     final prefs = await SharedPreferences.getInstance();
-    String stratStr = prefs.getString('mesh_strategy') ?? 'CLUSTER';
-    if (stratStr == 'STAR') {
-      strategy = Strategy.P2P_STAR;
-    } else if (stratStr == 'P2P') {
-      strategy = Strategy.P2P_POINT_TO_POINT;
+    bool useBT = prefs.getBool('mesh_use_bluetooth') ?? true;
+    bool useWifi = prefs.getBool('mesh_use_wifi') ?? true;
+
+    if (useBT && !useWifi) {
+      strategy = Strategy.P2P_CLUSTER; // Bluetooth optimized
+    } else if (useWifi) {
+      strategy = Strategy.P2P_STAR; // Wi-Fi optimized
     } else {
       strategy = Strategy.P2P_CLUSTER;
     }
@@ -263,6 +266,7 @@ class P2PConnectionService extends ChangeNotifier {
       bool success = await Nearby().startAdvertising(
         userName,
         strategy,
+        serviceId: _serviceId,
         onConnectionInitiated: (id, info) {
           debugPrint('Connection Initiated: $id');
           endpointMap[id] = info;
@@ -298,6 +302,7 @@ class P2PConnectionService extends ChangeNotifier {
       bool success = await Nearby().startDiscovery(
         userName,
         strategy,
+        serviceId: _serviceId,
         onEndpointFound: (id, name, serviceId) {
           debugPrint('Endpoint Found: $id ($name)');
           Nearby().requestConnection(

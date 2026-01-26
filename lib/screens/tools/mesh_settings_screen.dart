@@ -11,8 +11,9 @@ class MeshSettingsScreen extends StatefulWidget {
 }
 
 class _MeshSettingsScreenState extends State<MeshSettingsScreen> {
-  String _selectedStrategy = 'CLUSTER';
-  bool _preferWifi = true;
+  bool _useBluetooth = true;
+  bool _useWifi = true;
+  bool _useHotspot = true;
 
   @override
   void initState() {
@@ -23,15 +24,17 @@ class _MeshSettingsScreenState extends State<MeshSettingsScreen> {
   Future<void> _loadSettings() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
-      _selectedStrategy = prefs.getString('mesh_strategy') ?? 'CLUSTER';
-      _preferWifi = prefs.getBool('mesh_prefer_wifi') ?? true;
+      _useBluetooth = prefs.getBool('mesh_use_bluetooth') ?? true;
+      _useWifi = prefs.getBool('mesh_use_wifi') ?? true;
+      _useHotspot = prefs.getBool('mesh_use_hotspot') ?? true;
     });
   }
 
   Future<void> _saveSettings() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('mesh_strategy', _selectedStrategy);
-    await prefs.setBool('mesh_prefer_wifi', _preferWifi);
+    await prefs.setBool('mesh_use_bluetooth', _useBluetooth);
+    await prefs.setBool('mesh_use_wifi', _useWifi);
+    await prefs.setBool('mesh_use_hotspot', _useHotspot);
 
     // Restart mesh with new settings
     final p2p = P2PConnectionService();
@@ -56,20 +59,19 @@ class _MeshSettingsScreenState extends State<MeshSettingsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('BAĞLANTI STRATEJİSİ', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const Text('MESH MODLARI', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
             const SizedBox(height: 16),
-            _buildStrategyTile('CLUSTER (Önerilen)', 'Çok sayıda cihaz için ağ yapısı. Herkes herkesle konuşabilir.', 'CLUSTER'),
-            _buildStrategyTile('STAR', 'Bir merkez cihaz etrafında hızlı bağlantı. Dosya paylaşımı için iyidir.', 'STAR'),
-            _buildStrategyTile('POINT_TO_POINT', 'Birebir en yüksek hız.', 'P2P'),
+            _buildToggleTile('Bluetooth Mesh', 'Kısa mesafe, düşük güç tüketimi.', _useBluetooth, (v) => setState(() => _useBluetooth = v)),
+            _buildToggleTile('Wi-Fi Direct', 'Yüksek hız, uzun mesafe.', _useWifi, (v) => setState(() => _useWifi = v)),
+            _buildToggleTile('Hotspot', 'Wi-Fi yoksa cihazlar arası köprü.', _useHotspot, (v) => setState(() => _useHotspot = v)),
             const SizedBox(height: 40),
-            const Text('TRANSPORT AYARLARI', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
+            const Text('AĞ DURUMU', style: TextStyle(color: Colors.white38, fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 1)),
             const SizedBox(height: 16),
-            _buildToggleTile('Wi-Fi Direct Kullan', 'Daha uzun mesafe ve yüksek hız sağlar.', _preferWifi, (v) => setState(() => _preferWifi = v)),
             const Padding(
               padding: EdgeInsets.symmetric(horizontal: 16),
               child: Text(
-                'Not: Nearby Connections bağlantı türünü (BT/Wi-Fi) otomatik seçer. Wi-Fi kapatılırsa sadece Bluetooth kullanılır.',
-                style: TextStyle(color: Colors.white24, fontSize: 10),
+                'Wi-Fi önceliklidir. Wi-Fi bağlantısı kurulamadığında otomatik olarak Bluetooth Mesh ağına geçilir.',
+                style: TextStyle(color: Colors.white24, fontSize: 12),
               ),
             ),
             const SizedBox(height: 60),
@@ -92,36 +94,6 @@ class _MeshSettingsScreenState extends State<MeshSettingsScreen> {
     );
   }
 
-  Widget _buildStrategyTile(String title, String desc, String value) {
-    bool isSelected = _selectedStrategy == value;
-    return GestureDetector(
-      onTap: () => setState(() => _selectedStrategy = value),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isSelected ? Colors.redAccent.withOpacity(0.1) : const Color(0xFF121212),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: isSelected ? Colors.redAccent : Colors.white.withOpacity(0.05)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: TextStyle(color: isSelected ? Colors.redAccent : Colors.white, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  Text(desc, style: const TextStyle(color: Colors.white38, fontSize: 11)),
-                ],
-              ),
-            ),
-            if (isSelected) const Icon(Icons.check_circle_rounded, color: Colors.redAccent),
-          ],
-        ),
-      ),
-    );
-  }
 
   Widget _buildToggleTile(String title, String desc, bool value, Function(bool) onChanged) {
     return Container(

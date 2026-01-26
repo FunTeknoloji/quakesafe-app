@@ -12,6 +12,9 @@ import 'package:share_plus/share_plus.dart';
 import 'package:intl/intl.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_tts/flutter_tts.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path/path.dart' as p;
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
@@ -34,25 +37,17 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> messages = [];
   final TextEditingController _textController = TextEditingController();
   final VoiceCallService _voiceCallService = VoiceCallService();
-  final AudioRecorder _audioRecorder = AudioRecorder();
   final P2PConnectionService _p2p = P2PConnectionService();
+  final FlutterTts _tts = FlutterTts();
+  final stt.SpeechToText _speech = stt.SpeechToText();
 
+  bool _isListening = false;
   DateTime? _lastMessageTime;
   bool _isCalling = false;
-  bool _isRecording = false;
   String? _activeCallEndpoint;
   bool _isScanning = true;
   StreamSubscription? _dbSub;
   late int _sessionStartTime;
-
-  @override
-  void initState() {
-    super.initState();
-    _sessionStartTime = DateTime.now().millisecondsSinceEpoch;
-    _p2p.addListener(_onP2PChange);
-    _dbSub = DatabaseService.onMessageAdded.listen((_) => _onNewMessage());
-    _initChat();
-  }
 
   void _onP2PChange() {
     if (mounted) setState(() {
@@ -84,6 +79,20 @@ class _ChatScreenState extends State<ChatScreen> {
   void didUpdateWidget(ChatScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     // Refresh when navigating to this screen if needed
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _sessionStartTime = DateTime.now().millisecondsSinceEpoch;
+    _p2p.addListener(_onP2PChange);
+    _dbSub = DatabaseService.onMessageAdded.listen((_) => _onNewMessage());
+    _initChat();
+    _initTts();
+  }
+
+  void _initTts() {
+    _tts.setLanguage("tr-TR");
   }
 
   Future<void> _initChat() async {
@@ -167,6 +176,7 @@ class _ChatScreenState extends State<ChatScreen> {
       if (_isCalling) Navigator.pop(context);
       setState(() { _isCalling = false; _activeCallEndpoint = null; });
       _voiceCallService.stopCall();
+      NotificationService.cancelNotification(id.hashCode);
     }
   }
 
@@ -197,7 +207,7 @@ class _ChatScreenState extends State<ChatScreen> {
     }
 
     var meta = _incomingFileMeta[payload.id];
-    String fileType = meta?['fileType'] ?? (path.endsWith('.m4a') ? 'voice' : 'image');
+    String fileType = meta?['fileType'] ?? 'image';
     String originalName = meta?['fileName'] ?? p.basename(path);
 
     final appDir = await getApplicationDocumentsDirectory();
@@ -206,8 +216,7 @@ class _ChatScreenState extends State<ChatScreen> {
     try {
       if (await File(path).exists()) {
         await File(path).copy(newPath);
-        await DatabaseService.insertMessage(sender: sender, text: fileType == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: fileType, extraData: newPath);
-        setState(() => messages.add(ChatMessage(sender: sender, text: fileType == 'voice' ? '[Sesli]' : '[Resim]', isMe: false, type: fileType, extraData: newPath)));
+        await DatabaseService.insertMessage(sender: sender, text: '[Resim]', isMe: false, type: fileType, extraData: newPath);
       }
     } catch (e) {
       debugPrint('File error: $e');
@@ -327,24 +336,33 @@ class _ChatScreenState extends State<ChatScreen> {
     Nearby().sendBytesPayload(to, Uint8List.fromList(utf8.encode(jsonEncode(meta))));
   }
 
-  Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      final path = await _audioRecorder.stop();
-      setState(() => _isRecording = false);
-      if (path != null) {
-        for (String id in _p2p.endpointMap.keys) {
-          int payloadId = await Nearby().sendFilePayload(id, path);
-          _sendFileMeta(id, payloadId, path, 'voice');
-        }
-        await DatabaseService.insertMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path);
-        setState(() => messages.add(ChatMessage(sender: 'Ben', text: '[Sesli]', isMe: true, type: 'voice', extraData: path)));
+  Future<void> _toggleSpeech() async {
+    if (_isListening) {
+      _speech.stop();
+      setState(() => _isListening = false);
+    } else {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(onResult: (result) {
+          setState(() {
+            _textController.text = result.recognizedWords;
+            if (result.finalResult) {
+              _isListening = false;
+            }
+          });
+        });
       }
-    } else if (await _audioRecorder.hasPermission()) {
-      final dir = await getApplicationDocumentsDirectory();
-      final path = '${dir.path}/v_${DateTime.now().ms}.m4a';
-      await _audioRecorder.start(const RecordConfig(), path: path);
-      setState(() => _isRecording = true);
     }
+  }
+
+  void _speak(String text) async {
+    await _tts.speak(text);
+  }
+
+  void _copy(String text) {
+    Clipboard.setData(ClipboardData(text: text));
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Kopyalandı')));
   }
 
   @override
@@ -460,7 +478,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   return ListTile(
                     leading: const Icon(Icons.phone_android_rounded, color: Colors.redAccent),
                     title: Text(e.endpointName, style: const TextStyle(color: Colors.white, fontSize: 14)),
-                    subtitle: const Text('P2P Mesh Link', style: TextStyle(color: Colors.white24, fontSize: 11)),
+                    subtitle: const Text('P2P Mesh Bağlantısı', style: TextStyle(color: Colors.white24, fontSize: 11)),
                   );
                 },
               ),
@@ -540,7 +558,32 @@ class _ChatScreenState extends State<ChatScreen> {
     if (msg.type == 'image') return ClipRRect(borderRadius: BorderRadius.circular(10), child: Image.file(File(msg.extraData!)));
     if (msg.type == 'location') return _buildLocationPreview(msg.text, msg.extraData!);
     if (msg.type == 'voice') return Row(children: [const Icon(Icons.mic, size: 16, color: Colors.white70), const SizedBox(width: 8), const Text('Ses Mesajı', style: TextStyle(color: Colors.white, fontSize: 14)), IconButton(onPressed: () => _voiceCallService.playAudioFile(msg.extraData!), icon: const Icon(Icons.play_arrow, color: Colors.white))]);
-    return Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(msg.text, style: const TextStyle(color: Colors.white, fontSize: 14)),
+        const SizedBox(height: 8),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.volume_up_rounded, size: 16, color: Colors.white38),
+              onPressed: () => _speak(msg.text),
+            ),
+            const SizedBox(width: 12),
+            IconButton(
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              icon: const Icon(Icons.copy_rounded, size: 16, color: Colors.white38),
+              onPressed: () => _copy(msg.text),
+            ),
+          ],
+        ),
+      ],
+    );
   }
 
   Widget _buildLocationPreview(String text, String url) {
@@ -588,7 +631,10 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
           ),
           const SizedBox(width: 12),
-          IconButton(onPressed: _toggleRecording, icon: Icon(_isRecording ? Icons.stop_circle : Icons.mic, color: _isRecording ? Colors.redAccent : Colors.white54)),
+          IconButton(
+            onPressed: _toggleSpeech,
+            icon: Icon(_isListening ? Icons.stop_circle : Icons.mic, color: _isListening ? Colors.redAccent : Colors.white54)
+          ),
           IconButton(onPressed: sendMessage, icon: const Icon(Icons.send_rounded, color: Colors.redAccent)),
         ],
       ),

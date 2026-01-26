@@ -65,6 +65,9 @@ dependencies:
   flutter_background_service_android: ^6.3.1
   file_picker: ^10.3.8
   audio_session: ^0.2.2
+  speech_to_text: ^7.3.0
+  flutter_tts: ^4.2.5
+  device_info_plus: ^12.3.0
 
 dev_dependencies:
   flutter_test:

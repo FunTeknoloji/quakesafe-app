@@ -46,8 +46,10 @@ class VoiceCallService {
     _isSpeakerPhone = speakerOn;
     final audioSession = await session.AudioSession.instance;
     await audioSession.configure(session.AudioSessionConfiguration(
-      avAudioSessionCategory: speakerOn ? session.AVAudioSessionCategory.playAndRecord : session.AVAudioSessionCategory.playAndRecord,
-      avAudioSessionCategoryOptions: speakerOn ? session.AVAudioSessionCategoryOptions.defaultToSpeaker : session.AVAudioSessionCategoryOptions.none,
+      avAudioSessionCategory: session.AVAudioSessionCategory.playAndRecord,
+      avAudioSessionCategoryOptions: speakerOn
+          ? session.AVAudioSessionCategoryOptions.defaultToSpeaker
+          : session.AVAudioSessionCategoryOptions.none,
       avAudioSessionMode: session.AVAudioSessionMode.voiceChat,
       androidAudioAttributes: session.AndroidAudioAttributes(
         contentType: session.AndroidAudioContentType.speech,
@@ -55,19 +57,46 @@ class VoiceCallService {
       ),
       androidAudioFocusGainType: session.AndroidAudioFocusGainType.gain,
     ));
+    await audioSession.setActive(true);
   }
 
-  Future<void> init() async {
-    await _recorder.initialize(sampleRate: 16000);
-    await _player.initialize(sampleRate: 16000);
+  int _currentSampleRate = 16000;
+
+  Future<void> init({int sampleRate = 16000}) async {
+    _currentSampleRate = sampleRate;
+    await _recorder.initialize(sampleRate: sampleRate);
+    await _player.initialize(sampleRate: sampleRate);
     await toggleSpeaker(true);
   }
+
+  Future<void> setQuality(int sampleRate) async {
+    if (_currentSampleRate == sampleRate) return;
+    debugPrint('Switching Audio Quality to: $sampleRate Hz');
+    _currentSampleRate = sampleRate;
+    try {
+      await _recorder.stop();
+      await _player.stop();
+      await _recorder.initialize(sampleRate: sampleRate);
+      await _player.initialize(sampleRate: sampleRate);
+    } catch (e) {
+      debugPrint('SetQuality Error: $e');
+    }
+  }
+
+  final ValueNotifier<bool> isTransmitting = ValueNotifier<bool>(false);
+  Timer? _pttTimer;
 
   void startCall(String endpointId) {
     if (_isCallActive) return;
     _isCallActive = true;
 
     _player.start();
+  }
+
+  void startPTT(String endpointId) {
+    if (isTransmitting.value) return;
+    isTransmitting.value = true;
+
     _recorder.start();
 
     List<int> buffer = [];
@@ -77,7 +106,6 @@ class VoiceCallService {
       if (_isRecording) _recordSink?.add(data);
 
       bool hasSound = false;
-      // High noise gate threshold to prevent echo loop
       for (int i = 0; i < data.length; i+=2) {
         if (data[i].abs() > 30) {
           hasSound = true;
@@ -90,7 +118,6 @@ class VoiceCallService {
       buffer.addAll(data);
       if (buffer.length >= 1024) {
         Uint8List payload = Uint8List.fromList(buffer);
-        // Broadcast to all or target
         if (endpointId == 'all') {
           for (var eid in P2PConnectionService().endpointMap.keys) {
              Nearby().sendBytesPayload(eid, payload);
@@ -101,14 +128,30 @@ class VoiceCallService {
         buffer.clear();
       }
     });
+
+    // Auto-stop after 10s
+    _pttTimer = Timer(const Duration(seconds: 10), () {
+      stopPTT();
+    });
+  }
+
+  void stopPTT() {
+    if (!isTransmitting.value) return;
+    isTransmitting.value = false;
+    _pttTimer?.cancel();
+    _recorder.stop();
+    _recorderSubscription?.cancel();
+    _recorderSubscription = null;
   }
 
   void receiveAudio(Uint8List data) {
     if (!_isCallActive) {
       _isCallActive = true;
-      if (!_isRemoteMuted) _player.start();
+      _player.start();
     }
+
     if (_isRecording) _recordSink?.add(data);
+
     if (!_isRemoteMuted) {
       _player.writeChunk(data);
     }

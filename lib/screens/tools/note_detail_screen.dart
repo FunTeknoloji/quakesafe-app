@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:record/record.dart';
+import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import 'package:open_filex/open_filex.dart';
@@ -21,8 +21,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _contentController = TextEditingController();
   List<String> _attachments = [];
-  bool _isRecording = false;
-  final AudioRecorder _audioRecorder = AudioRecorder();
+  bool _isListening = false;
+  final stt.SpeechToText _speech = stt.SpeechToText();
   final VoiceCallService _voiceService = VoiceCallService();
 
   @override
@@ -71,18 +71,23 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
     }
   }
 
-  Future<void> _toggleRecording() async {
-    if (_isRecording) {
-      final path = await _audioRecorder.stop();
-      setState(() => _isRecording = false);
-      if (path != null) {
-        setState(() => _attachments.add(path));
+  Future<void> _toggleSpeech() async {
+    if (_isListening) {
+      _speech.stop();
+      setState(() => _isListening = false);
+    } else {
+      bool available = await _speech.initialize();
+      if (available) {
+        setState(() => _isListening = true);
+        _speech.listen(onResult: (result) {
+          setState(() {
+            _contentController.text = _contentController.text + " " + result.recognizedWords;
+            if (result.finalResult) {
+              _isListening = false;
+            }
+          });
+        });
       }
-    } else if (await _audioRecorder.hasPermission()) {
-      final dir = await getApplicationDocumentsDirectory();
-      final path = '${dir.path}/note_rec_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      await _audioRecorder.start(const RecordConfig(), path: path);
-      setState(() => _isRecording = true);
     }
   }
 
@@ -204,8 +209,8 @@ class _NoteDetailScreenState extends State<NoteDetailScreen> {
           IconButton(onPressed: _pickImage, icon: const Icon(Icons.image, color: Colors.white54)),
           IconButton(onPressed: _pickFile, icon: const Icon(Icons.attach_file, color: Colors.white54)),
           IconButton(
-            onPressed: _toggleRecording,
-            icon: Icon(_isRecording ? Icons.stop_circle : Icons.mic, color: _isRecording ? Colors.red : Colors.white54),
+            onPressed: _toggleSpeech,
+            icon: Icon(_isListening ? Icons.stop_circle : Icons.mic, color: _isListening ? Colors.red : Colors.white54),
           ),
         ],
       ),

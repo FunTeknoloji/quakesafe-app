@@ -20,8 +20,8 @@ class BackgroundService {
         autoStart: true,
         isForegroundMode: true,
         notificationChannelId: 'quakesafe_bg_channel',
-        initialNotificationTitle: 'QuakeSafe Koruma Modu',
-        initialNotificationContent: 'Mesh ağı ve acil durum takibi aktif.',
+        initialNotificationTitle: 'QuakeSafe Aktif',
+        initialNotificationContent: 'Koruma sistemi devrede.',
         foregroundServiceNotificationId: 888,
       ),
       iosConfiguration: IosConfiguration(
@@ -198,19 +198,5 @@ class BackgroundService {
       }
     });
 
-    // Update notification less frequently and with lower impact
-    Timer.periodic(const Duration(seconds: 10), (timer) async {
-      try {
-        if (service is AndroidServiceInstance) {
-          if (await service.isForegroundService()) {
-            // Keep it minimal as requested
-            service.setForegroundNotificationInfo(
-              title: "QuakeSafe Koruma Modu",
-              content: "Acil durum ağı arka planda aktif.",
-            );
-          }
-        }
-      } catch (e) {}
-    });
   }
 }

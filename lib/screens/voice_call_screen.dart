@@ -35,11 +35,40 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     super.initState();
     _startTime = DateTime.now();
     _startTimer();
+    P2PConnectionService().addListener(_checkParticipants);
+    widget.voiceCallService.isTransmitting.addListener(_onTransmissionChanged);
     widget.voiceCallService.startCall(widget.endpointId);
+  }
+
+  void _onTransmissionChanged() {
+    if (mounted) {
+      setState(() {
+        _isTalking = widget.voiceCallService.isTransmitting.value;
+      });
+    }
+  }
+
+  void _checkParticipants() {
+    final p2p = P2PConnectionService();
+    if (p2p.endpointMap.isEmpty) {
+      debugPrint('No participants left, ending call.');
+      _endCall();
+      return;
+    }
+
+    if (p2p.connectionQuality.isNotEmpty) {
+      double avg = p2p.connectionQuality.values.reduce((a, b) => a + b) / p2p.connectionQuality.length;
+      if (avg < 5) {
+        widget.voiceCallService.setQuality(8000);
+      } else {
+        widget.voiceCallService.setQuality(16000);
+      }
+    }
   }
 
   void _startTimer() {
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) return;
       final now = DateTime.now();
       final diff = now.difference(_startTime!);
       setState(() {
@@ -50,6 +79,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   @override
   void dispose() {
+    P2PConnectionService().removeListener(_checkParticipants);
+    widget.voiceCallService.isTransmitting.removeListener(_onTransmissionChanged);
     _timer?.cancel();
     super.dispose();
   }
@@ -57,7 +88,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   void _endCall() {
     widget.voiceCallService.stopCall();
     P2PConnectionService().sendProtocolMessage(widget.endpointId, {'type': 'VOICE_SIG', 'cmd': 'STOP'});
-    Navigator.pop(context);
+    if (mounted) Navigator.pop(context);
   }
 
   @override
@@ -81,31 +112,36 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   Widget _buildUserInfo() {
-    final endpoints = P2PConnectionService().endpointMap;
-    return Column(
-      children: [
-        const Text(
-          'KATILIMCILAR',
-          style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
-        ),
-        const SizedBox(height: 20),
-        SizedBox(
-          height: 120,
-          child: ListView(
-            scrollDirection: Axis.horizontal,
-            shrinkWrap: true,
-            children: [
-              _buildParticipantAvatar('Ben', isMe: true),
-              ...endpoints.entries.map((e) => _buildParticipantAvatar(e.value.endpointName)),
-            ],
-          ),
-        ),
-        const SizedBox(height: 24),
-        Text(
-          _duration,
-          style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
-        ),
-      ],
+    return ListenableBuilder(
+      listenable: P2PConnectionService(),
+      builder: (context, _) {
+        final endpoints = P2PConnectionService().endpointMap;
+        return Column(
+          children: [
+            const Text(
+              'KATILIMCILAR',
+              style: TextStyle(color: Colors.white38, fontSize: 10, fontWeight: FontWeight.bold, letterSpacing: 2),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              height: 120,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                shrinkWrap: true,
+                children: [
+                  _buildParticipantAvatar('Ben', isMe: true),
+                  ...endpoints.entries.map((e) => _buildParticipantAvatar(e.value.endpointName)),
+                ],
+              ),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              _duration,
+              style: const TextStyle(color: Colors.redAccent, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
+            ),
+          ],
+        );
+      }
     );
   }
 
@@ -149,7 +185,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           SizedBox(width: 12),
           Expanded(
             child: Text(
-              'Çevrimdışı bağlantı nedeniyle seste gecikmeler yaşanabilir.',
+              'PTT Modu: Sadece bastığınızda sesiniz gider.',
               style: TextStyle(color: Colors.orangeAccent, fontSize: 12, fontWeight: FontWeight.bold),
             ),
           ),
@@ -157,6 +193,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
       ),
     );
   }
+
+  bool _isTalking = false;
 
   Widget _buildControls() {
     return Column(
@@ -171,6 +209,42 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
               style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
             ),
           ],
+        ),
+        const SizedBox(height: 24),
+        GestureDetector(
+          onTapDown: (_) {
+            setState(() => _isTalking = true);
+            widget.voiceCallService.startPTT(widget.endpointId);
+          },
+          onTapUp: (_) {
+            setState(() => _isTalking = false);
+            widget.voiceCallService.stopPTT();
+          },
+          onTapCancel: () {
+            setState(() => _isTalking = false);
+            widget.voiceCallService.stopPTT();
+          },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: 120,
+            height: 120,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: _isTalking ? Colors.redAccent : Colors.redAccent.withOpacity(0.1),
+              border: Border.all(color: Colors.redAccent, width: 4),
+              boxShadow: _isTalking ? [BoxShadow(color: Colors.redAccent.withOpacity(0.5), blurRadius: 20)] : [],
+            ),
+            child: Icon(
+              Icons.mic_rounded,
+              size: 48,
+              color: _isTalking ? Colors.white : Colors.redAccent
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        const Text(
+          'BAS KONUŞ (MAX 10SN)',
+          style: TextStyle(color: Colors.white54, fontSize: 10, fontWeight: FontWeight.bold)
         ),
         const SizedBox(height: 32),
         Row(
@@ -196,27 +270,10 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 widget.voiceCallService.toggleRemoteMute(newState);
               },
             ),
-          ],
-        ),
-        const SizedBox(height: 32),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildRoundButton(
-              icon: _isMuted ? Icons.mic_off_rounded : Icons.mic_rounded,
-              color: _isMuted ? Colors.redAccent : Colors.white10,
-              label: 'MUTE',
-              onTap: () {
-                bool newMute = !_isMuted;
-                setState(() => _isMuted = newMute);
-                widget.voiceCallService.toggleMute(newMute);
-              },
-            ),
             _buildRoundButton(
               icon: Icons.call_end_rounded,
               color: Colors.red,
-              size: 80,
-              iconSize: 32,
+              label: 'KAPAT',
               onTap: _endCall,
             ),
             _buildRoundButton(
