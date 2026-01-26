@@ -213,7 +213,7 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
               children: [
                 Expanded(child: _buildDashboardStat('Eğim', '${_tiltX.toStringAsFixed(1)}°', FontAwesomeIcons.arrowsUpDownLeftRight)),
                 Container(width: 1, height: 40, color: Colors.white10),
-                Expanded(child: _buildDashboardStat('Cihaz', '${P2PConnectionService().endpointMap.length}', Icons.hub_rounded)),
+                Expanded(child: _buildDashboardStat('Cihaz', '${P2PConnectionService().nodes.length}', Icons.hub_rounded)),
                 Container(width: 1, height: 40, color: Colors.white10),
                 Expanded(child: _buildDashboardStat('Batarya', '%$_batteryLevel', _batteryLevel > 20 ? Icons.battery_full_rounded : Icons.battery_alert_rounded)),
               ],
@@ -247,20 +247,32 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
   }
 
   Widget _buildQuickToolsGrid() {
-    return GridView.count(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      crossAxisCount: 2,
-      mainAxisSpacing: 15,
-      crossAxisSpacing: 15,
-      childAspectRatio: 1.6,
+    return Column(
       children: [
-        _buildToolCard('FENER', _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded, Colors.orangeAccent, _toggleFlashlight),
-        _buildToolCard('ACİL SMS', Icons.sms_failed_rounded, Colors.redAccent, _sendEmergencySMS),
-        _buildToolCard('ACİL DÜDÜK', Icons.air_rounded, Colors.blueAccent, _playWhistle),
-        _buildToolCard('SİREN', Icons.warning_amber_rounded, Colors.purpleAccent, _playSiren),
+        Row(
+          children: [
+            Expanded(
+              child: _buildToolCard('SOS', Icons.sos_rounded, Colors.redAccent, _toggleStatus, isLarge: true),
+            ),
+            const SizedBox(width: 15),
+            Expanded(
+              child: _buildToolCard('FENER', _isFlashlightOn ? Icons.flashlight_on_rounded : Icons.flashlight_off_rounded, Colors.orangeAccent, _toggleFlashlight, isLarge: true),
+            ),
+          ],
+        ),
+        const SizedBox(height: 15),
+        _buildToolCard('SESLİ ARAMA', Icons.call_rounded, Colors.greenAccent, _startVoiceCall, isLarge: false),
       ],
     );
+  }
+
+  void _startVoiceCall() {
+    final p2p = P2PConnectionService();
+    if (p2p.nodes.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlı cihaz yok')));
+      return;
+    }
+    p2p.sendProtocolMessage('all', {'type': 'VOICE_SIG', 'cmd': 'START'});
   }
 
   void _shareLocation() async {
@@ -302,10 +314,11 @@ class _OfflineHomeScreenState extends State<OfflineHomeScreen> with TickerProvid
     } catch (e) {}
   }
 
-  Widget _buildToolCard(String title, IconData icon, Color color, VoidCallback onTap) {
+  Widget _buildToolCard(String title, IconData icon, Color color, VoidCallback onTap, {bool isLarge = false}) {
     return GestureDetector(
       onTap: onTap,
       child: Container(
+        height: isLarge ? 120 : 60,
         decoration: BoxDecoration(color: color.withOpacity(0.05), borderRadius: BorderRadius.circular(24), border: Border.all(color: color.withOpacity(0.1))),
         child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [Icon(icon, color: color, size: 28), const SizedBox(height: 8), Text(title, style: TextStyle(color: color, fontWeight: FontWeight.bold, fontSize: 12))]),
       ),

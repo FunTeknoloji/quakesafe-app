@@ -375,7 +375,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
     return ListenableBuilder(
       listenable: P2PConnectionService(),
       builder: (context, _) {
-        final devices = P2PConnectionService().endpointMap.values.toList();
+        final devices = P2PConnectionService().nodes.values.toList();
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -415,12 +415,12 @@ class _ToolsScreenState extends State<ToolsScreen> {
                         Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(devices[i].endpointName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
+                            Text(devices[i].nodeId, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
                             const Text('P2P Mesh Bağlantısı', style: TextStyle(color: Colors.white24, fontSize: 9)),
                           ],
                         ),
                         const Spacer(),
-                        _buildStabilityIndicator(P2PConnectionService().connectionQuality[P2PConnectionService().endpointMap.keys.elementAt(i)] ?? 10),
+                        _buildStabilityIndicator(P2PConnectionService().connectionQuality[P2PConnectionService().nodes.keys.elementAt(i)] ?? 10),
                       ],
                     ),
                   ),

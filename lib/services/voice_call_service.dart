@@ -119,7 +119,7 @@ class VoiceCallService {
       if (buffer.length >= 1024) {
         Uint8List payload = Uint8List.fromList(buffer);
         if (endpointId == 'all') {
-          for (var eid in P2PConnectionService().endpointMap.keys) {
+          for (var eid in P2PConnectionService().nodes.keys) {
              Nearby().sendBytesPayload(eid, payload);
           }
         } else {

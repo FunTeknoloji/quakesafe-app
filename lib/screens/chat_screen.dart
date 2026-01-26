@@ -16,6 +16,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_to_text.dart' as stt;
 import 'package:path/path.dart' as p;
+import '../models/message.dart' as model;
 import '../services/database_service.dart';
 import '../services/notification_service.dart';
 import '../services/profile_service.dart';
@@ -51,7 +52,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _onP2PChange() {
     if (mounted) setState(() {
-      if (_p2p.endpointMap.isNotEmpty) _isScanning = false;
+      if (_p2p.nodes.isNotEmpty) _isScanning = false;
     });
   }
 
@@ -152,7 +153,7 @@ class _ChatScreenState extends State<ChatScreen> {
           }
 
           // Legacy plain text (still support for simplicity)
-          String sender = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+          String sender = _p2p.nodes[id]?.nodeId ?? 'Bilinmeyen';
           String type = str.startsWith('📍 Konum:') ? 'location' : 'text';
           String? extra = type == 'location' ? str.split('📍 Konum: ').last : null;
           await DatabaseService.insertMessage(sender: sender, text: str, isMe: false, type: type, extraData: extra);
@@ -165,7 +166,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _handleVoiceSignaling(String id, String cmd) {
     if (cmd == 'START') {
-      String caller = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+      String caller = _p2p.nodes[id]?.nodeId ?? 'Bilinmeyen';
       NotificationService.showCallNotification(id: id.hashCode, callerName: caller);
       _showIncomingCallUI(id);
     } else if (cmd == 'ACCEPT') {
@@ -182,7 +183,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _showIncomingCallUI(String id) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => IncomingCallScreen(
-      callerName: _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen',
+      callerName: _p2p.nodes[id]?.nodeId ?? 'Bilinmeyen',
       onAccept: () {
         Navigator.pop(context);
         _p2p.sendProtocolMessage(id, {'type': 'VOICE_SIG', 'cmd': 'ACCEPT'});
@@ -197,7 +198,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _handleFilePayload(String id, Payload payload) async {
     String path = payload.filePath!;
-    String sender = _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen';
+    String sender = _p2p.nodes[id]?.nodeId ?? 'Bilinmeyen';
 
     // Polling for metadata if not arrived yet
     int retries = 0;
@@ -227,7 +228,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _isCalling = true; _activeCallEndpoint = id; });
     Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(
       endpointId: id,
-      endpointName: _p2p.endpointMap[id]?.endpointName ?? 'Bilinmeyen',
+      endpointName: _p2p.nodes[id]?.nodeId ?? 'Bilinmeyen',
       voiceCallService: _voiceCallService,
     ))).then((_) {
       setState(() { _isCalling = false; _activeCallEndpoint = null; });
@@ -264,7 +265,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _toggleVoiceCall() {
-    if (_p2p.endpointMap.isEmpty) {
+    if (_p2p.nodes.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlı cihaz yok')));
       return;
     }
@@ -286,9 +287,9 @@ class _ChatScreenState extends State<ChatScreen> {
             padding: EdgeInsets.all(20),
             child: Text('ARANACAK CİHAZI SEÇİN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
           ),
-          ..._p2p.endpointMap.entries.map((e) => ListTile(
+          ..._p2p.nodes.entries.map((e) => ListTile(
             leading: const Icon(Icons.phone_android, color: Colors.redAccent),
-            title: Text(e.value.endpointName, style: const TextStyle(color: Colors.white)),
+            title: Text(e.value.nodeId, style: const TextStyle(color: Colors.white)),
             onTap: () {
               Navigator.pop(context);
               _requestCall(e.key);
@@ -304,7 +305,7 @@ class _ChatScreenState extends State<ChatScreen> {
     setState(() { _isCalling = true; _activeCallEndpoint = targetId; });
     Navigator.push(context, MaterialPageRoute(builder: (context) => VoiceCallScreen(
       endpointId: targetId,
-      endpointName: _p2p.endpointMap[targetId]?.endpointName ?? 'Bilinmeyen',
+      endpointName: _p2p.nodes[targetId]?.nodeId ?? 'Bilinmeyen',
       voiceCallService: _voiceCallService,
     ))).then((_) {
       setState(() { _isCalling = false; _activeCallEndpoint = null; });
@@ -318,7 +319,7 @@ class _ChatScreenState extends State<ChatScreen> {
     String url = 'https://www.google.com/maps?q=$lat,$lng';
     String msg = '📍 KONUM BİLGİSİ\nEnlem: $lat\nBoylam: $lng\nHarita: $url';
 
-    for (String id in _p2p.endpointMap.keys) {
+    for (String id in _p2p.nodes.keys) {
       Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(msg)));
     }
 
@@ -385,7 +386,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 _buildTacticalInput(),
               ],
             ),
-            if (_isScanning && _p2p.endpointMap.isEmpty) _buildScanningOverlay(),
+            if (_isScanning && _p2p.nodes.isEmpty) _buildScanningOverlay(),
           ],
         ),
       ),
@@ -440,7 +441,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        '${_p2p.endpointMap.length} CİHAZ AKTİF',
+                        '${_p2p.nodes.length} CİHAZ AKTİF',
                         style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12, letterSpacing: 1),
                       ),
                       const Text('Bağlantıları görmek için dokunun', style: TextStyle(color: Colors.white24, fontSize: 9)),
@@ -468,16 +469,16 @@ class _ChatScreenState extends State<ChatScreen> {
         title: const Text('BAĞLI CİHAZLAR', style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold)),
         content: SizedBox(
           width: double.maxFinite,
-          child: _p2p.endpointMap.isEmpty
+          child: _p2p.nodes.isEmpty
             ? const Text('Bağlı cihaz yok', style: TextStyle(color: Colors.white38))
             : ListView.builder(
                 shrinkWrap: true,
-                itemCount: _p2p.endpointMap.length,
+                itemCount: _p2p.nodes.length,
                 itemBuilder: (context, i) {
-                  final e = _p2p.endpointMap.values.elementAt(i);
+                  final e = _p2p.nodes.values.elementAt(i);
                   return ListTile(
                     leading: const Icon(Icons.phone_android_rounded, color: Colors.redAccent),
-                    title: Text(e.endpointName, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    title: Text(e.nodeId, style: const TextStyle(color: Colors.white, fontSize: 14)),
                     subtitle: const Text('P2P Mesh Bağlantısı', style: TextStyle(color: Colors.white24, fontSize: 11)),
                   );
                 },
@@ -662,7 +663,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   void _sendEmergencyMessage() {
-    _p2p.sendMessage(text: "🚨 ACİL DURUM YARDIMI GEREKLİ!", priority: 'critical');
+    _p2p.sendMessage(text: "🚨 ACİL DURUM YARDIMI GEREKLİ!", priority: model.MessagePriority.SOS);
   }
 
   Widget _buildAddIcon(IconData icon, String label, Color color, VoidCallback onTap) {

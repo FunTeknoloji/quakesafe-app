@@ -50,7 +50,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
 
   void _checkParticipants() {
     final p2p = P2PConnectionService();
-    if (p2p.endpointMap.isEmpty) {
+    if (p2p.nodes.isEmpty) {
       debugPrint('No participants left, ending call.');
       _endCall();
       return;
@@ -115,7 +115,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     return ListenableBuilder(
       listenable: P2PConnectionService(),
       builder: (context, _) {
-        final endpoints = P2PConnectionService().endpointMap;
+        final endpoints = P2PConnectionService().nodes;
         return Column(
           children: [
             const Text(
@@ -130,7 +130,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
                 shrinkWrap: true,
                 children: [
                   _buildParticipantAvatar('Ben', isMe: true),
-                  ...endpoints.entries.map((e) => _buildParticipantAvatar(e.value.endpointName)),
+                  ...endpoints.entries.map((e) => _buildParticipantAvatar(e.value.nodeId)),
                 ],
               ),
             ),
@@ -145,20 +145,42 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     );
   }
 
-  Widget _buildParticipantAvatar(String name, {bool isMe = false}) {
+  Widget _buildParticipantAvatar(String name, {bool isMe = false, String? endpointId}) {
+    bool isMutedByUser = false;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12),
       child: Column(
         children: [
-          Container(
-            width: 80,
-            height: 80,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: isMe ? Colors.blueAccent.withOpacity(0.1) : Colors.redAccent.withOpacity(0.1),
-              border: Border.all(color: isMe ? Colors.blueAccent : Colors.redAccent, width: 2),
+          GestureDetector(
+            onLongPress: () {
+              if (isMe || endpointId == null) return;
+              setState(() {
+                // Toggle mute state for the user
+              });
+            },
+            child: Container(
+              width: 80,
+              height: 80,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: isMe ? Colors.blueAccent.withOpacity(0.1) : Colors.redAccent.withOpacity(0.1),
+                border: Border.all(color: isMe ? Colors.blueAccent : Colors.redAccent, width: 2),
+              ),
+              child: Stack(
+                alignment: Alignment.center,
+                children: [
+                  Icon(Icons.person_rounded, size: 40, color: isMe ? Colors.blueAccent : Colors.redAccent),
+                  if (isMutedByUser)
+                    Container(
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Colors.black.withOpacity(0.5),
+                      ),
+                      child: const Icon(Icons.mic_off_rounded, color: Colors.white, size: 24),
+                    )
+                ],
+              ),
             ),
-            child: Icon(Icons.person_rounded, size: 40, color: isMe ? Colors.blueAccent : Colors.redAccent),
           ),
           const SizedBox(height: 12),
           Text(
@@ -204,9 +226,28 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           children: [
             const Icon(Icons.hub_rounded, color: Colors.greenAccent, size: 14),
             const SizedBox(width: 8),
-            Text(
-              '${P2PConnectionService().endpointMap.length + 1} KATILIMCI | HQ AUDIO',
-              style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
+            PopupMenuButton<int>(
+              onSelected: (int quality) {
+                widget.voiceCallService.setQuality(quality);
+              },
+              itemBuilder: (BuildContext context) => <PopupMenuEntry<int>>[
+                const PopupMenuItem<int>(
+                  value: 8000,
+                  child: Text('Düşük Kalite'),
+                ),
+                const PopupMenuItem<int>(
+                  value: 16000,
+                  child: Text('Orta Kalite'),
+                ),
+                const PopupMenuItem<int>(
+                  value: 24000,
+                  child: Text('Yüksek Kalite'),
+                ),
+              ],
+              child: Text(
+                '${P2PConnectionService().nodes.length + 1} KATILIMCI | SES KALİTESİ',
+                style: const TextStyle(color: Colors.greenAccent, fontSize: 10, fontWeight: FontWeight.bold),
+              ),
             ),
           ],
         ),
