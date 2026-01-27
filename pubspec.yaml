@@ -68,6 +68,9 @@ dependencies:
   speech_to_text: ^7.3.0
   flutter_tts: ^4.2.5
   device_info_plus: ^12.3.0
+  image: ^4.7.2
+  wakelock: ^0.4.0
+  wakelock_plus: ^1.4.0
 
 dev_dependencies:
   flutter_test:
@@ -93,7 +96,7 @@ flutter_launcher_icons:
 # The following section is specific to Flutter packages.
 flutter:
   assets:
-    - assets/images/logo.png
+    - assets/images/
     - assets/sounds/
 
   # The following line ensures that the Material Icons font is

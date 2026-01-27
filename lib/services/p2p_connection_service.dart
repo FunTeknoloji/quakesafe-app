@@ -22,8 +22,10 @@ class P2PConnectionService extends ChangeNotifier {
 
   static const String _serviceId = "com.quakesafe.app.mesh";
   Strategy strategy = Strategy.P2P_CLUSTER;
-  Map<String, Node> nodes = {};
+  Map<String, Node> endpointMap = {};
   late Node _selfNode;
+  String get selfNodeId => _selfNode.nodeId;
+  Node get selfNode => _selfNode;
 
   Map<String, int> connectionQuality = {}; // Stability score
   bool isAdvertising = false;
@@ -46,7 +48,7 @@ class P2PConnectionService extends ChangeNotifier {
 
   void _startHeartbeat() {
     Timer.periodic(const Duration(seconds: 30), (timer) async {
-      if (nodes.isEmpty) return;
+      if (endpointMap.isEmpty) return;
       _selfNode.batteryLevel = await Battery().batteryLevel;
       _sendHeartbeat();
     });
@@ -55,14 +57,14 @@ class P2PConnectionService extends ChangeNotifier {
   void _sendHeartbeat() {
     var payload = {
       'type': 'HEARTBEAT',
-      'node': _selfNode.toJson(),
+      'node': selfNode.toJson(),
     };
     sendProtocolMessage('all', payload);
   }
 
   void _startMeshKeepAlive() {
     Timer.periodic(const Duration(seconds: 30), (timer) {
-      if (nodes.isEmpty && !isInitializing && _currentUserName != null) {
+      if (endpointMap.isEmpty && !isInitializing && _currentUserName != null) {
         debugPrint('Mesh Keep-Alive: No connections found, restarting mesh...');
         initMesh(_currentUserName!, _onInitCallback ?? (id, info) {});
       }
@@ -73,11 +75,11 @@ class P2PConnectionService extends ChangeNotifier {
     Timer.periodic(const Duration(minutes: 1), (timer) async {
       try {
         int level = await Battery().batteryLevel;
-        _selfNode.batteryLevel = level;
+        selfNode.batteryLevel = level;
 
         if (level < 15) {
           // Extreme power save: stop everything if no active connections
-          if (nodes.isEmpty) {
+          if (endpointMap.isEmpty) {
             Nearby().stopDiscovery();
             Nearby().stopAdvertising();
             isDiscovery = false;
@@ -120,7 +122,7 @@ class P2PConnectionService extends ChangeNotifier {
   }) async {
     final message = model.Message(
       messageId: const Uuid().v4(),
-      senderId: _selfNode.nodeId,
+      senderId: selfNode.nodeId,
       receiverId: receiverId,
       content: text,
       priority: priority,
@@ -144,8 +146,8 @@ class P2PConnectionService extends ChangeNotifier {
 
     if (message.receiverId == 'broadcast') {
       final relays = _selectRelays(2);
-      if (relays.isEmpty && nodes.isNotEmpty) {
-        for (String eid in nodes.keys) {
+      if (relays.isEmpty && endpointMap.isNotEmpty) {
+        for (String eid in endpointMap.keys) {
           await Nearby().sendBytesPayload(eid, bytes);
         }
       } else {
@@ -154,18 +156,28 @@ class P2PConnectionService extends ChangeNotifier {
         }
       }
       success = true;
-    } else if (nodes.containsKey(message.receiverId)) {
+    } else if (endpointMap.containsKey(message.receiverId)) {
       await Nearby().sendBytesPayload(message.receiverId, bytes);
       success = await _waitForAck(message.messageId);
     }
 
-    // Local DB update can be added here if needed
+    if (success) {
+      await DatabaseService.insertMessage(
+        sender: 'Ben',
+        text: message.content,
+        isMe: true,
+        status: 'sent',
+        priority: message.priority.toString().split('.').last,
+        receiverId: message.receiverId,
+        messageId: message.messageId,
+      );
+    }
   }
 
   List<Node> _selectRelays(int maxRelays) {
-    if (nodes.isEmpty) return [];
+    if (endpointMap.isEmpty) return [];
 
-    var sortedNodes = nodes.values.toList();
+    var sortedNodes = endpointMap.values.toList();
     sortedNodes.sort((a, b) {
       int scoreA = a.batteryLevel + (connectionQuality[a.nodeId] ?? 0);
       int scoreB = b.batteryLevel + (connectionQuality[b.nodeId] ?? 0);
@@ -211,10 +223,10 @@ class P2PConnectionService extends ChangeNotifier {
 
         switch (data['type']) {
           case 'HEARTBEAT':
-            if (nodes.containsKey(id)) {
-              nodes[id]!.batteryLevel = data['node']['batteryLevel'];
-              nodes[id]!.nodeRole = NodeRole.values[data['node']['nodeRole']];
-              nodes[id]!.lastSeen = DateTime.now();
+            if (endpointMap.containsKey(id)) {
+              endpointMap[id]!.batteryLevel = data['node']['batteryLevel'];
+              endpointMap[id]!.nodeRole = NodeRole.values[data['node']['nodeRole']];
+              endpointMap[id]!.lastSeen = DateTime.now();
               notifyListeners();
             }
             break;
@@ -231,7 +243,7 @@ class P2PConnectionService extends ChangeNotifier {
             for (var msg in missingForPeer) {
               final message = model.Message(
                 messageId: msg['message_id'],
-                senderId: _selfNode.nodeId,
+                senderId: selfNode.nodeId,
                 receiverId: id,
                 content: msg['text'],
                 priority: model.MessagePriority.values.firstWhere(
@@ -259,7 +271,7 @@ class P2PConnectionService extends ChangeNotifier {
             final existing = await DatabaseService.getMessages();
             if (existing.any((m) => m['message_id'] == data['id'])) return;
 
-            String sender = nodes[id]?.nodeId ?? 'Bilinmeyen';
+            String sender = endpointMap[id]?.nodeId ?? 'Bilinmeyen';
             await DatabaseService.insertMessage(
               sender: sender,
               text: data['text'],
@@ -326,7 +338,7 @@ class P2PConnectionService extends ChangeNotifier {
         serviceId: _serviceId,
         onConnectionInitiated: (id, info) {
           debugPrint('Connection Initiated: $id');
-          nodes[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
+          endpointMap[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
           notifyListeners();
           onInit(id, info);
         },
@@ -336,13 +348,13 @@ class P2PConnectionService extends ChangeNotifier {
             _syncWithPeer(id);
             _sendHeartbeat();
           } else {
-            nodes.remove(id);
+            endpointMap.remove(id);
           }
           notifyListeners();
         },
         onDisconnected: (id) {
           debugPrint('Disconnected: $id');
-          nodes.remove(id);
+          endpointMap.remove(id);
           notifyListeners();
         },
       );
@@ -368,7 +380,7 @@ class P2PConnectionService extends ChangeNotifier {
             id,
             onConnectionInitiated: (id, info) {
               debugPrint('Connection Initiated: $id');
-              nodes[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
+              endpointMap[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
               notifyListeners();
               onInit(id, info);
             },
@@ -378,13 +390,13 @@ class P2PConnectionService extends ChangeNotifier {
                 _syncWithPeer(id);
                  _sendHeartbeat();
               } else {
-                nodes.remove(id);
+                endpointMap.remove(id);
               }
               notifyListeners();
             },
             onDisconnected: (id) {
               debugPrint('Disconnected: $id');
-              nodes.remove(id);
+              endpointMap.remove(id);
               notifyListeners();
             },
           );
@@ -407,7 +419,7 @@ class P2PConnectionService extends ChangeNotifier {
     String jsonStr = jsonEncode(data);
     Uint8List bytes = Uint8List.fromList(utf8.encode(jsonStr));
     if (targetId == 'all') {
-      for (var eid in nodes.keys) {
+      for (var eid in endpointMap.keys) {
         await Nearby().sendBytesPayload(eid, bytes);
       }
     } else {
@@ -419,7 +431,7 @@ class P2PConnectionService extends ChangeNotifier {
     await Nearby().stopAdvertising();
     await Nearby().stopDiscovery();
     await Nearby().stopAllEndpoints();
-    nodes.clear();
+    endpointMap.clear();
     isAdvertising = false;
     isDiscovery = false;
     notifyListeners();

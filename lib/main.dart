@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'screens/offline_main_wrapper.dart';
+import 'screens/home_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'dart:async';
@@ -155,6 +155,6 @@ class _MainGateState extends State<MainGate> {
         ),
       );
     }
-    return OfflineMainWrapper(initialIndex: _forceProfile ? 4 : 0);
+    return const HomeScreen();
   }
 }

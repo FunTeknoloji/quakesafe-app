@@ -24,6 +24,7 @@ class VoiceCallService {
   bool _isMuted = false;
   bool _isRemoteMuted = false;
   bool _isSpeakerPhone = true;
+  Set<String> mutedUsers = {};
 
   bool _isRecording = false;
   File? _recordFile;
@@ -40,6 +41,10 @@ class VoiceCallService {
     } else if (_isCallActive) {
       _player.start();
     }
+  }
+
+  void setMutedUsers(Set<String> users) {
+    mutedUsers = users;
   }
 
   Future<void> toggleSpeaker(bool speakerOn) async {
@@ -119,7 +124,7 @@ class VoiceCallService {
       if (buffer.length >= 1024) {
         Uint8List payload = Uint8List.fromList(buffer);
         if (endpointId == 'all') {
-          for (var eid in P2PConnectionService().nodes.keys) {
+          for (var eid in P2PConnectionService().endpointMap.keys) {
              Nearby().sendBytesPayload(eid, payload);
           }
         } else {
@@ -144,7 +149,7 @@ class VoiceCallService {
     _recorderSubscription = null;
   }
 
-  void receiveAudio(Uint8List data) {
+  void receiveAudio(String endpointId, Uint8List data) {
     if (!_isCallActive) {
       _isCallActive = true;
       _player.start();
@@ -152,7 +157,7 @@ class VoiceCallService {
 
     if (_isRecording) _recordSink?.add(data);
 
-    if (!_isRemoteMuted) {
+    if (!_isRemoteMuted && !mutedUsers.contains(endpointId)) {
       _player.writeChunk(data);
     }
   }
