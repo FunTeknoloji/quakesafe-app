@@ -146,31 +146,79 @@ class _ToolsScreenState extends State<ToolsScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildHeader(),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                child: Column(
-                  children: [
-                    _buildTacticalInstrument(),
-                    const SizedBox(height: 24),
-                    _buildRadarView(),
-                    const SizedBox(height: 24),
-                    _buildPrimaryActions(),
-                    const SizedBox(height: 24),
-                    _buildEmergencySounds(),
-                    const SizedBox(height: 24),
-                    _buildUtilityTools(),
-                    const SizedBox(height: 40),
-                  ],
-                ),
-              ),
+      appBar: AppBar(
+        title: const Text('Araçlar'),
+        backgroundColor: Colors.black,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          _buildToolCard(
+            title: 'Fener',
+            icon: Icons.flashlight_on,
+            content: SwitchListTile(
+              title: const Text('Fener'),
+              value: _isFlashlightOn,
+              onChanged: (value) => _toggleFlashlight(),
             ),
-          ],
-        ),
+          ),
+          _buildToolCard(
+            title: 'SOS Flaş',
+            icon: Icons.emergency,
+            content: SwitchListTile(
+              title: const Text('SOS Flaş'),
+              value: _isSosFlashlightOn,
+              onChanged: (value) => _toggleSosFlashlight(),
+            ),
+          ),
+          _buildToolCard(
+            title: 'Pusula',
+            icon: Icons.explore,
+            content: _buildCompassInstrument(),
+          ),
+          _buildToolCard(
+            title: 'Su Terazisi',
+            icon: Icons.format_align_center,
+            content: _buildLevelInstrument(),
+          ),
+          _buildToolCard(
+            title: 'Acil Durum Sesleri',
+            icon: Icons.volume_up,
+            content: _buildEmergencySounds(),
+          ),
+          _buildToolCard(
+            title: 'Hızlı Mesaj',
+            icon: Icons.message,
+            content: _buildQuickMessage(),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickMessage() {
+    return Column(
+      children: [
+        _buildQuickMessageButton('İyiyim'),
+        _buildQuickMessageButton('Yardıma ihtiyacım var'),
+        _buildQuickMessageButton('Buradayım'),
+      ],
+    );
+  }
+
+  Widget _buildQuickMessageButton(String message) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8.0),
+      child: ElevatedButton(
+        onPressed: () {
+          P2PConnectionService().sendMessage(text: message);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('"$message" gönderildi'),
+            ),
+          );
+        },
+        child: Text(message),
       ),
     );
   }
@@ -599,6 +647,24 @@ class _ToolsScreenState extends State<ToolsScreen> {
       labelStyle: TextStyle(color: isPlaying ? Colors.white : Colors.white70, fontSize: 11, fontWeight: FontWeight.bold),
       side: BorderSide(color: isPlaying ? Colors.redAccent : Colors.white10),
       avatar: Icon(isPlaying ? Icons.stop : Icons.waves, size: 14, color: isPlaying ? Colors.white : Colors.white38),
+    );
+  }
+
+  Widget _buildToolCard(
+      {required String title, required IconData icon, required Widget content}) {
+    return Card(
+      color: const Color(0xFF1A1A1A),
+      margin: const EdgeInsets.only(bottom: 16),
+      child: ExpansionTile(
+        leading: Icon(icon, color: Colors.white),
+        title: Text(title, style: const TextStyle(color: Colors.white)),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: content,
+          ),
+        ],
+      ),
     );
   }
 }

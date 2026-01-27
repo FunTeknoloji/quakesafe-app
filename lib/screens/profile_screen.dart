@@ -76,93 +76,65 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text('PROFİL', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              const SizedBox(height: 40),
+              const Text('Profil', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
+              const SizedBox(height: 24),
               Center(
-                child: Stack(
+                child: Column(
                   children: [
-                    GestureDetector(
-                      onTap: _pickImage,
-                      child: CircleAvatar(
-                        radius: 60,
-                        backgroundColor: Colors.redAccent.withOpacity(0.1),
-                        backgroundImage: _photoPath != null ? FileImage(File(_photoPath!)) : null,
-                        child: _photoPath == null ? const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent) : null,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                          child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
+                    Stack(
+                      children: [
+                        CircleAvatar(
+                          radius: 60,
+                          backgroundImage: _photoPath != null ? FileImage(File(_photoPath!)) : null,
+                          child: _photoPath == null ? const Icon(Icons.person, size: 60) : null,
                         ),
+                        Positioned(
+                          bottom: 0,
+                          right: 0,
+                          child: IconButton(
+                            icon: const Icon(Icons.camera_alt, color: Colors.white),
+                            onPressed: _pickImage,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    TextField(
+                      controller: _nameController,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
+                      decoration: const InputDecoration.collapsed(
+                        hintText: 'Adınız',
+                        hintStyle: TextStyle(color: Colors.grey),
                       ),
+                      onChanged: (value) => _saveProfile(showInfo: false),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(height: 40),
-              _buildLabel('GÖRÜNÜR ADINIZ'),
-              const SizedBox(height: 12),
-              _buildTextField(_nameController, 'Adınızı girin...', autoSave: true),
-              const SizedBox(height: 40),
-              _buildLabel('ACİL DURUM AYARLARI'),
-              const SizedBox(height: 12),
-              _buildEmergencyContactTile(),
-              const SizedBox(height: 16),
-              _buildLabel('ÖZEL ACİL DURUM MESAJI'),
-              const SizedBox(height: 12),
-              _buildTextField(_sosMessageController, 'SOS mesajınızı özelleştirin...', autoSave: true),
-              const SizedBox(height: 40),
-              _buildLabel('UYGULAMA AYARLARI'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF121212),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Bildirimler', style: TextStyle(color: Colors.white70)),
-                    Switch(
-                      value: _notificationsEnabled,
-                      onChanged: (v) {
-                        setState(() => _notificationsEnabled = v);
-                        _saveProfile();
-                      },
-                      activeColor: Colors.redAccent,
-                    ),
-                  ],
-                ),
+              const SizedBox(height: 32),
+              _buildProfileOption(
+                context,
+                icon: Icons.emergency,
+                title: 'Acil Durum Kişisi',
+                subtitle: _emergencyContactName ?? 'Seçilmedi',
+                onTap: _pickEmergencyContact,
               ),
-              const SizedBox(height: 24),
-              _buildLabel('CİHAZ BİLGİLERİ'),
-              const SizedBox(height: 12),
-              _buildInfoTile('Bağlantı Türü', 'P2P Mesh'),
-              _buildInfoTile('Durum', 'Aktif'),
-              const SizedBox(height: 24),
-              _buildActionButton('SES KAYITLARI', Icons.mic_external_on_rounded, () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
-              }),
-              const SizedBox(height: 60),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text('TÜM DEĞİŞİKLİKLERİ KAYDET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+              _buildProfileOption(
+                context,
+                icon: Icons.message,
+                title: 'Acil Durum Mesajı',
+                onTap: () {
+                  // Show dialog to edit SOS message
+                },
+              ),
+              _buildProfileOption(
+                context,
+                icon: Icons.mic,
+                title: 'Ses Kayıtları',
+                onTap: () {
+                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
+                },
               ),
             ],
           ),
@@ -285,6 +257,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
+    );
+  }
+
+  Widget _buildProfileOption(BuildContext context,
+      {required IconData icon,
+      required String title,
+      String? subtitle,
+      required VoidCallback onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white),
+      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18)),
+      subtitle: subtitle != null
+          ? Text(subtitle, style: const TextStyle(color: Colors.grey))
+          : null,
+      onTap: onTap,
     );
   }
 }

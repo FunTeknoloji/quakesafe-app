@@ -80,6 +80,7 @@ class MainContent extends StatelessWidget {
           const Spacer(),
           _buildSOSButton(context),
           const Spacer(),
+          _buildQuickActions(context),
           const SizedBox(height: 80), // Space for the bottom nav bar
         ],
       ),
@@ -92,35 +93,38 @@ class MainContent extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          const CircleAvatar(
-            radius: 20,
-            backgroundImage: AssetImage('assets/images/logo.png'), // More generic placeholder
-          ),
-          const Column(
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'KONUM',
+                'GÜVENDE KAL',
                 style: TextStyle(
-                  color: Colors.grey,
-                  fontSize: 12,
+                  color: Colors.grey[400],
+                  fontSize: 14,
                   fontWeight: FontWeight.bold,
                 ),
               ),
-              Row(
-                children: [
-                  Icon(Icons.location_on, color: Colors.white, size: 16),
-                  SizedBox(width: 4),
-                  Text(
-                    'Kadıköy, İstanbul', // Placeholder
-                    style: TextStyle(color: Colors.white, fontSize: 14),
-                  ),
-                ],
+              const Text(
+                'Acil Durum Ağı',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
-          IconButton(
-            icon: const Icon(Icons.notifications_none, color: Colors.white),
-            onPressed: () {},
+          Row(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.battery_charging_full, color: Colors.green),
+                onPressed: () {},
+              ),
+              IconButton(
+                icon: const Icon(Icons.network_check, color: Colors.blue),
+                onPressed: () {},
+              ),
+            ],
           ),
         ],
       ),
@@ -140,7 +144,7 @@ class MainContent extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         GestureDetector(
-          onTap: () {
+          onLongPress: () {
             P2PConnectionService().sendMessage(
               text: "🚨 ACİL DURUM YARDIMI GEREKLİ!",
               priority: model.MessagePriority.SOS,
@@ -188,25 +192,44 @@ class MainContent extends StatelessWidget {
             fontWeight: FontWeight.bold,
           ),
         ),
-        const SizedBox(height: 40),
-        ElevatedButton.icon(
-          onPressed: () {
+      ],
+    );
+  }
+
+  Widget _buildQuickActions(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildQuickActionButton(context, Icons.flashlight_on, 'Fener', () {}),
+          _buildQuickActionButton(context, Icons.volume_up, 'Düdük', () {}),
+          _buildQuickActionButton(context, Icons.notifications, 'Bildirimler', () {}),
+          _buildQuickActionButton(context, Icons.apps, 'Araçlar', () {
             showModalBottomSheet(
               context: context,
               backgroundColor: Colors.transparent,
               builder: (context) => const ToolsBottomSheet(),
             );
-          },
-          icon: const Icon(Icons.apps, color: Colors.white),
-          label: const Text('Araçlar', style: TextStyle(color: Colors.white)),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.grey[800],
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(20),
-            ),
-          ),
-        )
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickActionButton(
+      BuildContext context, IconData icon, String label, VoidCallback onPressed) {
+    return Column(
+      children: [
+        IconButton(
+          icon: Icon(icon, color: Colors.white, size: 30),
+          onPressed: onPressed,
+        ),
+        const SizedBox(height: 5),
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white, fontSize: 12),
+        ),
       ],
     );
   }

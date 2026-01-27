@@ -28,21 +28,28 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   void initState() {
     super.initState();
     _videoCallService = VideoCallService(widget.endpointId);
-    _initializeCamera();
+    availableCameras().then((cameras) {
+      _cameras = cameras;
+      if (_cameras.isNotEmpty) {
+        _initializeCamera(_cameras.first);
+      }
+    });
   }
 
-  Future<void> _initializeCamera() async {
-    _cameras = await availableCameras();
-    final firstCamera = _cameras.first;
-
+  Future<void> _initializeCamera(CameraDescription cameraDescription) async {
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+    }
     _cameraController = CameraController(
-      firstCamera,
+      cameraDescription,
       ResolutionPreset.low,
     );
 
     await _cameraController!.initialize();
     _cameraController!.startImageStream((image) {
-      _videoCallService.sendVideoFrame(image);
+      if (!_isMuted) {
+        _videoCallService.sendVideoFrame(image);
+      }
     });
     setState(() {});
   }
@@ -57,7 +64,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Future<void> _switchCamera() async {
     if (_cameras.length > 1) {
       _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
-      await _initializeCamera();
+      await _initializeCamera(_cameras[_selectedCameraIndex]);
     }
   }
 
@@ -65,7 +72,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Video Call with ${P2PConnectionService().endpointMap[widget.endpointId]?.username ?? 'Unknown'}'),
+        title: Text('${P2PConnectionService().endpointMap[widget.endpointId]?.username ?? 'Bilinmeyen'} ile Görüntülü Görüşme'),
         actions: [
           IconButton(
             icon: Icon(_isMuted ? Icons.mic_off : Icons.mic),
@@ -97,7 +104,7 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
                 if (snapshot.hasData) {
                   return Image.memory(snapshot.data);
                 } else {
-                  return const Center(child: Text('No video from peer'));
+                  return const Center(child: Text('Peerden video yok'));
                 }
               },
             ),

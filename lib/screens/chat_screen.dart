@@ -496,7 +496,8 @@ class _ChatScreenState extends State<ChatScreen> {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlı cihaz yok')));
       return;
     }
-    _showVideoCallDevicePicker();
+    _p2p.sendProtocolMessage('all', {'type': 'VIDEO_SIG', 'cmd': 'START'});
+    _initiateVideoCall('all');
   }
 
   void _showVideoCallDevicePicker() {
