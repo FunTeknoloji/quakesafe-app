@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:quakesafe_app/models/message.dart' as model;
+import 'package:quakesafe_app/services/p2p_connection_service.dart';
 import 'tools_bottom_sheet.dart';
 import 'chat_screen.dart';
 import 'disaster_guide_screen.dart';
@@ -139,7 +141,15 @@ class MainContent extends StatelessWidget {
         const SizedBox(height: 20),
         GestureDetector(
           onTap: () {
-            // SOS logic here
+            P2PConnectionService().sendMessage(
+              text: "🚨 ACİL DURUM YARDIMI GEREKLİ!",
+              priority: model.MessagePriority.SOS,
+            );
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('SOS mesajı gönderildi!'),
+              ),
+            );
           },
           child: Container(
             width: 200,

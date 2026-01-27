@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
+import 'package:quakesafe_app/services/p2p_connection_service.dart';
 import '../services/video_call_service.dart';
 
 class VideoCallScreen extends StatefulWidget {
@@ -19,6 +20,9 @@ class VideoCallScreen extends StatefulWidget {
 class _VideoCallScreenState extends State<VideoCallScreen> {
   late VideoCallService _videoCallService;
   CameraController? _cameraController;
+  bool _isMuted = false;
+  List<CameraDescription> _cameras = [];
+  int _selectedCameraIndex = 0;
 
   @override
   void initState() {
@@ -28,8 +32,8 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
   }
 
   Future<void> _initializeCamera() async {
-    final cameras = await availableCameras();
-    final firstCamera = cameras.first;
+    _cameras = await availableCameras();
+    final firstCamera = _cameras.first;
 
     _cameraController = CameraController(
       firstCamera,
@@ -50,11 +54,32 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
     super.dispose();
   }
 
+  Future<void> _switchCamera() async {
+    if (_cameras.length > 1) {
+      _selectedCameraIndex = (_selectedCameraIndex + 1) % _cameras.length;
+      await _initializeCamera();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Video Call with ${widget.endpointName}'),
+        title: Text('Video Call with ${P2PConnectionService().endpointMap[widget.endpointId]?.username ?? 'Unknown'}'),
+        actions: [
+          IconButton(
+            icon: Icon(_isMuted ? Icons.mic_off : Icons.mic),
+            onPressed: () {
+              setState(() {
+                _isMuted = !_isMuted;
+              });
+            },
+          ),
+          IconButton(
+            icon: const Icon(Icons.switch_camera),
+            onPressed: _switchCamera,
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -78,6 +103,13 @@ class _VideoCallScreenState extends State<VideoCallScreen> {
             ),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          _videoCallService.sendSignal('END');
+          Navigator.pop(context);
+        },
+        child: const Icon(Icons.call_end),
       ),
     );
   }

@@ -149,6 +149,10 @@ class _ChatScreenState extends State<ChatScreen> {
                 _handleVoiceSignaling(id, data['cmd']);
                 return;
               }
+              if (data['type'] == 'VIDEO_SIG') {
+                _handleVideoSignaling(id, data['cmd']);
+                return;
+              }
               // Pass to reliable service
               _p2p.handleIncomingPayload(id, payload);
               return;
@@ -182,6 +186,28 @@ class _ChatScreenState extends State<ChatScreen> {
       _voiceCallService.stopCall();
       NotificationService.cancelNotification(id.hashCode);
     }
+  }
+
+  void _handleVideoSignaling(String id, String cmd) {
+    if (cmd == 'START') {
+      String caller = _p2p.endpointMap[id]?.nodeId ?? 'Bilinmeyen';
+      _showIncomingVideoCallUI(id);
+    }
+  }
+
+  void _showIncomingVideoCallUI(String id) {
+    Navigator.push(context, MaterialPageRoute(builder: (context) => IncomingCallScreen(
+      callerName: _p2p.endpointMap[id]?.nodeId ?? 'Bilinmeyen',
+      onAccept: () {
+        Navigator.pop(context);
+        _p2p.sendProtocolMessage(id, {'type': 'VIDEO_SIG', 'cmd': 'ACCEPT'});
+        _initiateVideoCall(id);
+      },
+      onReject: () {
+        Navigator.pop(context);
+        _p2p.sendProtocolMessage(id, {'type': 'VIDEO_SIG', 'cmd': 'REJECT'});
+      },
+    )));
   }
 
   void _showIncomingCallUI(String id) {
@@ -291,7 +317,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           ..._p2p.endpointMap.entries.map((e) => ListTile(
             leading: const Icon(Icons.phone_android, color: Colors.redAccent),
-            title: Text(e.value.nodeId, style: const TextStyle(color: Colors.white)),
+            title: Text(e.value.username, style: const TextStyle(color: Colors.white)),
             onTap: () {
               Navigator.pop(context);
               _requestCall(e.key);
@@ -487,7 +513,7 @@ class _ChatScreenState extends State<ChatScreen> {
           ),
           ..._p2p.endpointMap.entries.map((e) => ListTile(
             leading: const Icon(Icons.videocam, color: Colors.greenAccent),
-            title: Text(e.value.nodeId, style: const TextStyle(color: Colors.white)),
+            title: Text(e.value.username, style: const TextStyle(color: Colors.white)),
             onTap: () {
               Navigator.pop(context);
               _initiateVideoCall(e.key);
@@ -501,6 +527,7 @@ class _ChatScreenState extends State<ChatScreen> {
 
   void _initiateVideoCall(String targetId) {
     _videoCallService = VideoCallService(targetId);
+    _videoCallService!.sendSignal('START');
     Navigator.push(
       context,
       MaterialPageRoute(
@@ -530,7 +557,7 @@ class _ChatScreenState extends State<ChatScreen> {
                   final e = _p2p.endpointMap.values.elementAt(i);
                   return ListTile(
                     leading: const Icon(Icons.phone_android_rounded, color: Colors.redAccent),
-                    title: Text(e.nodeId, style: const TextStyle(color: Colors.white, fontSize: 14)),
+                    title: Text(e.username, style: const TextStyle(color: Colors.white, fontSize: 14)),
                     subtitle: const Text('P2P Mesh Bağlantısı', style: TextStyle(color: Colors.white24, fontSize: 11)),
                   );
                 },

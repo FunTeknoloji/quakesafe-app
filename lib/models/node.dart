@@ -7,6 +7,7 @@ enum NodeRole {
 
 class Node {
   final String nodeId;
+  String username;
   NodeRole nodeRole;
   int batteryLevel;
   int signalStrength;
@@ -14,6 +15,7 @@ class Node {
 
   Node({
     required this.nodeId,
+    required this.username,
     this.nodeRole = NodeRole.Normal,
     this.batteryLevel = 100,
     this.signalStrength = 0,
@@ -23,6 +25,7 @@ class Node {
   factory Node.fromJson(Map<String, dynamic> json) {
     return Node(
       nodeId: json['nodeId'],
+      username: json['username'],
       nodeRole: NodeRole.values[json['nodeRole']],
       batteryLevel: json['batteryLevel'],
       signalStrength: json['signalStrength'],
@@ -33,6 +36,7 @@ class Node {
   Map<String, dynamic> toJson() {
     return {
       'nodeId': nodeId,
+      'username': username,
       'nodeRole': nodeRole.index,
       'batteryLevel': batteryLevel,
       'signalStrength': signalStrength,

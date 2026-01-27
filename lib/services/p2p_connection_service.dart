@@ -36,10 +36,21 @@ class P2PConnectionService extends ChangeNotifier {
 
   final Map<String, Completer<bool>> _pendingAcks = {};
   final Queue<model.Message> _messageQueue = Queue<model.Message>();
+  final StreamController<Map<String, dynamic>> _videoStreamController = StreamController.broadcast();
+
+  Stream<Map<String, dynamic>> get videoStream => _videoStreamController.stream;
+  final StreamController<int> _rttController = StreamController.broadcast();
+  final StreamController<Map<String, dynamic>> _videoSigController = StreamController.broadcast();
+
+  Stream<int> get rttStream => _rttController.stream;
+  Stream<Map<String, dynamic>> get videoSigStream => _videoSigController.stream;
 
   void _startQueueProcessor() {
     Timer.periodic(const Duration(seconds: 2), (timer) {
       _processMessageQueue();
+      if (endpointMap.isNotEmpty) {
+        ping(endpointMap.keys.first);
+      }
     });
     _startBatteryOptimization();
     _startMeshKeepAlive();
@@ -222,6 +233,16 @@ class P2PConnectionService extends ChangeNotifier {
         var data = jsonDecode(str);
 
         switch (data['type']) {
+          case 'PING':
+            sendProtocolMessage(id, {
+              'type': 'PONG',
+              'timestamp': data['timestamp'],
+            });
+            break;
+          case 'PONG':
+            final rtt = DateTime.now().millisecondsSinceEpoch - data['timestamp'];
+            _rttController.add(rtt as int);
+            break;
           case 'HEARTBEAT':
             if (endpointMap.containsKey(id)) {
               endpointMap[id]!.batteryLevel = data['node']['batteryLevel'];
@@ -264,26 +285,33 @@ class P2PConnectionService extends ChangeNotifier {
             }
             break;
 
+          case 'VIDEO_FRAME':
+            _videoStreamController.add({'id': id, 'payload': payload.bytes});
+            break;
+          case 'VIDEO_SIG':
+            _videoSigController.add({'id': id, 'cmd': data['cmd']});
+            break;
           case 'MSG':
-            var ack = {'type': 'ACK', 'id': data['id']};
+            var message = model.Message.fromJson(data['message']);
+            var ack = {'type': 'ACK', 'id': message.messageId};
             Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(jsonEncode(ack))));
 
             final existing = await DatabaseService.getMessages();
-            if (existing.any((m) => m['message_id'] == data['id'])) return;
+            if (existing.any((m) => m['message_id'] == message.messageId)) return;
 
             String sender = endpointMap[id]?.nodeId ?? 'Bilinmeyen';
             await DatabaseService.insertMessage(
               sender: sender,
-              text: data['text'],
+              text: message.content,
               isMe: false,
-              priority: data['priority'] ?? 'normal',
-              messageId: data['id'],
+              priority: message.priority.toString().split('.').last,
+              messageId: message.messageId,
             );
 
             NotificationService.showNotification(
-              id: data['id'].hashCode,
+              id: message.messageId.hashCode,
               title: 'Yeni Mesaj: $sender',
-              body: data['text'],
+              body: message.content,
             );
             break;
         }
@@ -291,6 +319,13 @@ class P2PConnectionService extends ChangeNotifier {
     } catch (e) {
       debugPrint('Payload Handle Error: $e');
     }
+  }
+
+  void ping(String endpointId) {
+    sendProtocolMessage(endpointId, {
+      'type': 'PING',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   Future<void> initMesh(String userName, Function(String, ConnectionInfo) onInit) async {
@@ -302,6 +337,7 @@ class P2PConnectionService extends ChangeNotifier {
     var uuid = const Uuid();
     _selfNode = Node(
       nodeId: uuid.v4(),
+      username: userName,
       lastSeen: DateTime.now(),
       batteryLevel: await Battery().batteryLevel,
     );
@@ -338,7 +374,7 @@ class P2PConnectionService extends ChangeNotifier {
         serviceId: _serviceId,
         onConnectionInitiated: (id, info) {
           debugPrint('Connection Initiated: $id');
-          endpointMap[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
+          endpointMap[id] = Node(nodeId: info.endpointName, username: info.endpointName, lastSeen: DateTime.now());
           notifyListeners();
           onInit(id, info);
         },
@@ -380,7 +416,7 @@ class P2PConnectionService extends ChangeNotifier {
             id,
             onConnectionInitiated: (id, info) {
               debugPrint('Connection Initiated: $id');
-              endpointMap[id] = Node(nodeId: info.endpointName, lastSeen: DateTime.now());
+              endpointMap[id] = Node(nodeId: info.endpointName, username: info.endpointName, lastSeen: DateTime.now());
               notifyListeners();
               onInit(id, info);
             },

@@ -375,7 +375,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
     return ListenableBuilder(
       listenable: P2PConnectionService(),
       builder: (context, _) {
-        final devices = P2PConnectionService().nodes.values.toList();
+        final devices = P2PConnectionService().endpointMap.values.toList();
         return Container(
           padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
@@ -420,7 +420,7 @@ class _ToolsScreenState extends State<ToolsScreen> {
                           ],
                         ),
                         const Spacer(),
-                        _buildStabilityIndicator(P2PConnectionService().connectionQuality[P2PConnectionService().nodes.keys.elementAt(i)] ?? 10),
+                        _buildStabilityIndicator(P2PConnectionService().connectionQuality[P2PConnectionService().endpointMap.keys.elementAt(i)] ?? 10),
                       ],
                     ),
                   ),

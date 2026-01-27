@@ -1,4 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:quakesafe_app/screens/tools/calendar_screen.dart';
+import 'package:quakesafe_app/screens/tools/mesh_settings_screen.dart';
+import 'package:quakesafe_app/screens/tools/notepad_screen.dart';
+import 'package:quakesafe_app/screens/tools/timer_screen.dart';
+import 'package:quakesafe_app/screens/tools_screen.dart';
 
 class ToolsBottomSheet extends StatelessWidget {
   const ToolsBottomSheet({super.key});
@@ -31,14 +36,30 @@ class ToolsBottomSheet extends StatelessWidget {
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
             children: [
-              _buildToolItem(Icons.flashlight_on, 'Fener', () {}),
-              _buildToolItem(Icons.volume_up, 'Düdük', () {}),
-              _buildToolItem(Icons.map, 'Harita', () {}),
-              _buildToolItem(Icons.message, 'Hızlı Mesaj', () {}),
-              _buildToolItem(Icons.note_alt, 'Not Defteri', () {}),
-              _buildToolItem(Icons.timer, 'Kronometre', () {}),
-              _buildToolItem(Icons.calendar_today, 'Takvim', () {}),
-              _buildToolItem(Icons.settings, 'Ayarlar', () {}),
+              _buildToolItem(Icons.flashlight_on, 'Fener', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
+              }),
+              _buildToolItem(Icons.volume_up, 'Düdük', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
+              }),
+              _buildToolItem(Icons.map, 'Harita', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
+              }),
+              _buildToolItem(Icons.message, 'Hızlı Mesaj', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
+              }),
+              _buildToolItem(Icons.note_alt, 'Not Defteri', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const NotepadScreen()));
+              }),
+              _buildToolItem(Icons.timer, 'Kronometre', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const TimerScreen()));
+              }),
+              _buildToolItem(Icons.calendar_today, 'Takvim', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const CalendarScreen()));
+              }),
+              _buildToolItem(Icons.settings, 'Ayarlar', () {
+                Navigator.push(context, MaterialPageRoute(builder: (context) => const MeshSettingsScreen()));
+              }),
             ],
           ),
         ],

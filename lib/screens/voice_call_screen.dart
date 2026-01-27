@@ -28,6 +28,8 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   bool _isTalking = false;
   final P2PConnectionService _p2pService = P2PConnectionService();
   final Map<String, bool> _mutedUsers = {};
+  StreamSubscription? _rttSubscription;
+  int _rtt = 0;
 
   @override
   void initState() {
@@ -38,6 +40,13 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _p2pService.addListener(_onP2PChange);
     widget.voiceCallService.isTransmitting.addListener(_onTransmissionChanged);
     widget.voiceCallService.startCall(widget.endpointId);
+    _rttSubscription = _p2pService.rttStream.listen((rtt) {
+      if (mounted) {
+        setState(() {
+          _rtt = rtt;
+        });
+      }
+    });
   }
 
   @override
@@ -47,6 +56,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     _p2pService.removeListener(_onP2PChange);
     widget.voiceCallService.isTransmitting.removeListener(_onTransmissionChanged);
     widget.voiceCallService.stopCall();
+    _rttSubscription?.cancel();
     super.dispose();
   }
 
@@ -91,6 +101,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   void _toggleMute(String nodeId) {
     setState(() {
       _mutedUsers[nodeId] = !(_mutedUsers[nodeId] ?? false);
+      widget.voiceCallService.setMutedUsers(_mutedUsers.keys.where((k) => _mutedUsers[k] == true).toSet());
     });
   }
 
@@ -192,7 +203,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
           ),
           const SizedBox(height: 12),
           Text(
-            isMe ? 'Siz' : (node.nodeId.substring(0, 6)),
+            isMe ? 'Siz' : node.username,
             style: TextStyle(
               color: Colors.white.withOpacity(isMuted ? 0.3 : 1.0),
               fontSize: 12,
@@ -209,7 +220,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text('${node.nodeId.substring(0, 6)} için işlem'),
+        title: Text('${node.username} için işlem'),
         content: Text('Bu kullanıcıyı susturmak veya sesini açmak ister misiniz?'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
@@ -226,22 +237,35 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
   }
 
   Widget _buildConnectionQualityIndicator() {
+    String qualityText;
+    Color qualityColor;
+    if (_rtt < 150) {
+      qualityText = 'İyi';
+      qualityColor = Colors.greenAccent;
+    } else if (_rtt < 300) {
+      qualityText = 'Orta';
+      qualityColor = Colors.orangeAccent;
+    } else {
+      qualityText = 'Kötü';
+      qualityColor = Colors.redAccent;
+    }
+
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 32),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.greenAccent.withOpacity(0.1),
+        color: qualityColor.withOpacity(0.1),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.greenAccent.withOpacity(0.3)),
+        border: Border.all(color: qualityColor.withOpacity(0.3)),
       ),
-      child: const Row(
+      child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.signal_cellular_alt_rounded, color: Colors.greenAccent, size: 16),
-          SizedBox(width: 12),
+          Icon(Icons.signal_cellular_alt_rounded, color: qualityColor, size: 16),
+          const SizedBox(width: 12),
           Text(
-            'Bağlantı Kalitesi: İyi',
-            style: TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.bold),
+            'Bağlantı Kalitesi: $qualityText ($_rtt ms)',
+            style: TextStyle(color: qualityColor, fontSize: 12, fontWeight: FontWeight.bold),
           ),
         ],
       ),
