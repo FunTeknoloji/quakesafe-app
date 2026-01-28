@@ -15,6 +15,7 @@ class NotificationService {
 
     await _notificationsPlugin.initialize(
       initializationSettings,
+      onDidReceiveNotificationResponse: (details) {},
     );
 
     // Create background channel explicitly

@@ -14,7 +14,9 @@ class ContactsScreen extends StatefulWidget {
 class _ContactsScreenState extends State<ContactsScreen> {
   List<Contact>? _allContacts;
   List<Contact>? _filteredContacts;
+  Contact? _emergencyContact;
   bool _permissionDenied = false;
+  bool _isLoading = true;
   bool _isSearching = false;
   final TextEditingController _searchController = TextEditingController();
 
@@ -44,22 +46,51 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Future<void> _fetchContacts() async {
+    setState(() => _isLoading = true);
     if (!await FlutterContacts.requestPermission(readonly: true)) {
-      setState(() => _permissionDenied = true);
-    } else {
-      final contacts = await FlutterContacts.getContacts(withProperties: true);
       setState(() {
-        _allContacts = contacts;
-        _filteredContacts = contacts;
+        _permissionDenied = true;
+        _isLoading = false;
       });
+      return;
     }
+
+    final allContactsList = await FlutterContacts.getContacts(withProperties: true, withPhoto: true);
+    final prefs = await SharedPreferences.getInstance();
+    final emergencyNumber = prefs.getString('emergency_contact_number');
+
+    Contact? emergencyContact;
+
+    if (emergencyNumber != null && emergencyNumber.isNotEmpty) {
+      final emergencyContactIndex = allContactsList.indexWhere(
+        (c) => c.phones.any((p) => p.number.replaceAll(RegExp(r'[^0-9+]'), '') == emergencyNumber.replaceAll(RegExp(r'[^0-9+]'), ''))
+      );
+
+      if (emergencyContactIndex != -1) {
+        emergencyContact = allContactsList.removeAt(emergencyContactIndex);
+      }
+    }
+
+    setState(() {
+      _emergencyContact = emergencyContact;
+      _allContacts = allContactsList;
+      _filteredContacts = allContactsList;
+      _isLoading = false;
+    });
   }
 
+
   void _filterContacts(String query) {
+    if (_allContacts == null) return;
+    final lowerCaseQuery = query.toLowerCase();
     setState(() {
-      _filteredContacts = _allContacts?.where((contact) {
-        return contact.displayName.toLowerCase().contains(query.toLowerCase());
-      }).toList();
+      if (query.isEmpty) {
+        _filteredContacts = _allContacts;
+      } else {
+        _filteredContacts = _allContacts!.where((contact) {
+          return contact.displayName.toLowerCase().contains(lowerCaseQuery);
+        }).toList();
+      }
     });
   }
 
@@ -139,52 +170,119 @@ class _ContactsScreenState extends State<ContactsScreen> {
   }
 
   Widget _buildBody() {
-    if (_permissionDenied) return const Center(child: Text('İzin Reddedildi', style: TextStyle(color: Colors.white54)));
-    if (_filteredContacts == null) return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
-    if (_filteredContacts!.isEmpty) return const Center(child: Text('Kişi Bulunamadı', style: TextStyle(color: Colors.white54)));
+    if (_isLoading) return const Center(child: CircularProgressIndicator(color: Colors.redAccent));
+    if (_permissionDenied) return const Center(child: Text('Rehber izni reddedildi.', style: TextStyle(color: Colors.white54)));
+    if (_allContacts == null) return const Center(child: Text('Rehber yüklenemedi.', style: TextStyle(color: Colors.white54)));
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      itemCount: _filteredContacts!.length,
-      itemBuilder: (context, i) {
-        final c = _filteredContacts![i];
-        return Container(
-          margin: const EdgeInsets.only(bottom: 12),
-          decoration: BoxDecoration(
-            color: const Color(0xFF121212),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withOpacity(0.03)),
-          ),
-          child: ListTile(
-            contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 4),
-            leading: CircleAvatar(
-              backgroundColor: Colors.redAccent.withOpacity(0.1),
-              backgroundImage: c.thumbnail != null ? MemoryImage(c.thumbnail!) : null,
-              child: c.thumbnail == null ? Text(c.displayName.isNotEmpty ? c.displayName[0] : '?', style: const TextStyle(color: Colors.redAccent)) : null,
+    return CustomScrollView(
+      slivers: [
+        if (_emergencyContact != null && !_isSearching) ...[
+          _buildSectionHeader('ACİL DURUM KİŞİSİ'),
+          SliverToBoxAdapter(child: _buildEmergencyContactCard(_emergencyContact!)),
+        ],
+        if (!_isSearching) _buildSectionHeader('TÜM KİŞİLER'),
+        if (_filteredContacts!.isEmpty)
+          SliverFillRemaining(
+            child: Center(
+              child: Text(
+                _isSearching ? 'Arama sonucu bulunamadı.' : 'Rehberinizde kişi bulunamadı.',
+                style: const TextStyle(color: Colors.white54),
+              ),
             ),
-            title: Text(c.displayName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-            subtitle: Text(c.phones.isNotEmpty ? c.phones.first.number : 'No Number', style: const TextStyle(color: Colors.white38)),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                IconButton(
-                  onPressed: () => _sendSOS(c),
-                  icon: const Icon(Icons.emergency_rounded, color: Colors.redAccent, size: 20),
-                ),
-                IconButton(
-                  onPressed: () async {
-                    if (c.phones.isNotEmpty) {
-                      final Uri url = Uri.parse('tel:${c.phones.first.number}');
-                      if (await canLaunchUrl(url)) await launchUrl(url);
-                    }
-                  },
-                  icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 20),
-                ),
-              ],
+          )
+        else
+          SliverPadding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            sliver: SliverList(
+              delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildContactItem(_filteredContacts![index]),
+                childCount: _filteredContacts!.length,
+              ),
             ),
           ),
-        );
-      },
+      ],
+    );
+  }
+
+  Widget _buildSectionHeader(String title) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 24, 20, 16),
+        child: Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white38,
+            fontSize: 12,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmergencyContactCard(Contact contact) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Card(
+        elevation: 4,
+        shadowColor: Colors.redAccent.withOpacity(0.3),
+        color: const Color(0xFF2D1A1A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.redAccent.withOpacity(0.5)),
+        ),
+        child: _buildContactItem(contact, isEmergency: true),
+      ),
+    );
+  }
+
+  Widget _buildContactItem(Contact contact, {bool isEmergency = false}) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      leading: CircleAvatar(
+        radius: 24,
+        backgroundColor: isEmergency ? Colors.redAccent.withOpacity(0.2) : Colors.white.withOpacity(0.1),
+        backgroundImage: contact.photo != null ? MemoryImage(contact.photo!) : null,
+        child: contact.photo == null
+            ? Text(
+                contact.displayName.isNotEmpty ? contact.displayName[0].toUpperCase() : '?',
+                style: TextStyle(
+                  color: isEmergency ? Colors.redAccent : Colors.white,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                ),
+              )
+            : null,
+      ),
+      title: Text(
+        contact.displayName,
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+      ),
+      subtitle: Text(
+        contact.phones.isNotEmpty ? contact.phones.first.number : 'Numara yok',
+        style: const TextStyle(color: Colors.white54),
+      ),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            onPressed: () => _sendSOS(contact),
+            tooltip: 'SOS Mesajı Gönder',
+            icon: Icon(Icons.emergency_share_outlined, color: isEmergency ? Colors.yellowAccent : Colors.redAccent, size: 22),
+          ),
+          IconButton(
+            onPressed: () async {
+              if (contact.phones.isNotEmpty) {
+                final Uri url = Uri.parse('tel:${contact.phones.first.number}');
+                if (await canLaunchUrl(url)) await launchUrl(url);
+              }
+            },
+            tooltip: 'Ara',
+            icon: const Icon(Icons.call_outlined, color: Colors.greenAccent, size: 22),
+          ),
+        ],
+      ),
     );
   }
 }

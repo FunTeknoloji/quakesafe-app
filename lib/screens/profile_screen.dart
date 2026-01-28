@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../services/profile_service.dart';
 import 'recordings_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -70,104 +71,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('PROFİL', style: TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2)),
-              const SizedBox(height: 40),
-              Center(
-                child: Stack(
-                  children: [
-                    GestureDetector(
-                      onTap: _pickImage,
-                      child: CircleAvatar(
-                        radius: 60,
-                        backgroundColor: Colors.redAccent.withOpacity(0.1),
-                        backgroundImage: _photoPath != null ? FileImage(File(_photoPath!)) : null,
-                        child: _photoPath == null ? const Icon(Icons.person_rounded, size: 60, color: Colors.redAccent) : null,
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: const BoxDecoration(color: Colors.redAccent, shape: BoxShape.circle),
-                          child: const Icon(Icons.camera_alt_rounded, size: 16, color: Colors.white),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 40),
-              _buildLabel('GÖRÜNÜR ADINIZ'),
-              const SizedBox(height: 12),
-              _buildTextField(_nameController, 'Adınızı girin...', autoSave: true),
-              const SizedBox(height: 40),
-              _buildLabel('ACİL DURUM AYARLARI'),
-              const SizedBox(height: 12),
-              _buildEmergencyContactTile(),
-              const SizedBox(height: 16),
-              _buildLabel('ÖZEL ACİL DURUM MESAJI'),
-              const SizedBox(height: 12),
-              _buildTextField(_sosMessageController, 'SOS mesajınızı özelleştirin...', autoSave: true),
-              const SizedBox(height: 40),
-              _buildLabel('UYGULAMA AYARLARI'),
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF121212),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text('Bildirimler', style: TextStyle(color: Colors.white70)),
-                    Switch(
-                      value: _notificationsEnabled,
-                      onChanged: (v) {
-                        setState(() => _notificationsEnabled = v);
-                        _saveProfile();
-                      },
-                      activeColor: Colors.redAccent,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              _buildLabel('CİHAZ BİLGİLERİ'),
-              const SizedBox(height: 12),
-              _buildInfoTile('Bağlantı Türü', 'P2P Mesh'),
-              _buildInfoTile('Durum', 'Aktif'),
-              const SizedBox(height: 24),
-              _buildActionButton('SES KAYITLARI', Icons.mic_external_on_rounded, () {
-                Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
-              }),
-              const SizedBox(height: 60),
-              SizedBox(
-                width: double.infinity,
-                height: 56,
-                child: ElevatedButton(
-                  onPressed: _saveProfile,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  child: const Text('TÜM DEĞİŞİKLİKLERİ KAYDET', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                ),
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 250.0,
+            backgroundColor: Colors.black,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(_nameController.text, style: const TextStyle(color: Colors.white)),
+              background: _photoPath != null
+                  ? Image.file(File(_photoPath!), fit: BoxFit.cover)
+                  : Container(color: Colors.grey[800]),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _pickImage,
               ),
             ],
           ),
-        ),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Adınız', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _nameController,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      decoration: const InputDecoration(
+                        hintText: 'Adınız',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (value) => _saveProfile(showInfo: false),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoTile('Acil Durum Kişisi', _emergencyContactName ?? 'Seçilmedi'),
+                    _buildInfoTile('Acil Durum Mesajı', _sosMessageController.text),
+                    const SizedBox(height: 16),
+                    _buildActions(),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildActions() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildActionButton('Ayarlar', Icons.settings, () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => SettingsScreen()));
+        }),
+        _buildActionButton('Ses Kayıtları', Icons.mic, () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
+        }),
+      ],
     );
   }
 
@@ -285,6 +252,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Text(value, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         ],
       ),
+    );
+  }
+
+  Widget _buildProfileOption(BuildContext context,
+      {required IconData icon,
+      required String title,
+      String? subtitle,
+      required VoidCallback onTap}) {
+    return ListTile(
+      leading: Icon(icon, color: Colors.white),
+      title: Text(title, style: const TextStyle(color: Colors.white, fontSize: 18)),
+      subtitle: subtitle != null
+          ? Text(subtitle, style: const TextStyle(color: Colors.grey))
+          : null,
+      onTap: onTap,
     );
   }
 }

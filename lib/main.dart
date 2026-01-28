@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'screens/offline_main_wrapper.dart';
+import 'screens/home_screen.dart';
 import 'services/notification_service.dart';
 import 'services/background_service.dart';
 import 'dart:async';
@@ -18,16 +18,21 @@ void main() async {
       debugPrint('Notification Service Init Error: $e');
     }
 
-    runApp(const QuakeSafeApp());
+    runApp(const MyApp());
   }, (error, stack) {
     debugPrint('Critical startup error: $error');
     debugPrint(stack.toString());
   });
 }
 
-class QuakeSafeApp extends StatelessWidget {
-  const QuakeSafeApp({super.key});
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -155,6 +160,6 @@ class _MainGateState extends State<MainGate> {
         ),
       );
     }
-    return OfflineMainWrapper(initialIndex: _forceProfile ? 4 : 0);
+    return const HomeScreen();
   }
 }

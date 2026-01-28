@@ -1,12 +1,17 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nearby_connections/nearby_connections.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'database_service.dart';
 import 'notification_service.dart';
+import '../models/node.dart';
+import '../models/message.dart' as model;
+import 'package:uuid/uuid.dart';
 
 class P2PConnectionService extends ChangeNotifier {
   static final P2PConnectionService _instance = P2PConnectionService._internal();
@@ -17,7 +22,11 @@ class P2PConnectionService extends ChangeNotifier {
 
   static const String _serviceId = "com.quakesafe.app.mesh";
   Strategy strategy = Strategy.P2P_CLUSTER;
-  Map<String, ConnectionInfo> endpointMap = {};
+  Map<String, Node> endpointMap = {};
+  late Node _selfNode;
+  String get selfNodeId => _selfNode.nodeId;
+  Node get selfNode => _selfNode;
+
   Map<String, int> connectionQuality = {}; // Stability score
   bool isAdvertising = false;
   bool isDiscovery = false;
@@ -26,13 +35,52 @@ class P2PConnectionService extends ChangeNotifier {
   Function(String, ConnectionInfo)? _onInitCallback;
 
   final Map<String, Completer<bool>> _pendingAcks = {};
+  final Map<String, model.Message> _pendingMessages = {};
+  final Queue<model.Message> _messageQueue = Queue<model.Message>();
+  final StreamController<Map<String, dynamic>> _videoStreamController = StreamController.broadcast();
+
+  Stream<Map<String, dynamic>> get videoStream => _videoStreamController.stream;
+  final StreamController<int> _rttController = StreamController.broadcast();
+  final StreamController<Map<String, dynamic>> _videoSigController = StreamController.broadcast();
+
+  Stream<int> get rttStream => _rttController.stream;
+  Stream<Map<String, dynamic>> get videoSigStream => _videoSigController.stream;
 
   void _startQueueProcessor() {
-    Timer.periodic(const Duration(seconds: 10), (timer) {
-      _retryPendingMessages();
+    Timer.periodic(const Duration(seconds: 2), (timer) {
+      _processMessageQueue();
+      if (endpointMap.isNotEmpty) {
+        ping(endpointMap.keys.first);
+      }
     });
     _startBatteryOptimization();
     _startMeshKeepAlive();
+    _startHeartbeat();
+    _startMessageResendTimer();
+  }
+
+  void _startMessageResendTimer() {
+    Timer.periodic(const Duration(seconds: 10), (timer) {
+      for (var message in _pendingMessages.values) {
+        _sendRaw(message);
+      }
+    });
+  }
+
+  void _startHeartbeat() {
+    Timer.periodic(const Duration(seconds: 30), (timer) async {
+      if (endpointMap.isEmpty) return;
+      _selfNode.batteryLevel = await Battery().batteryLevel;
+      _sendHeartbeat();
+    });
+  }
+
+  void _sendHeartbeat() {
+    var payload = {
+      'type': 'HEARTBEAT',
+      'node': selfNode.toJson(),
+    };
+    sendProtocolMessage('all', payload);
   }
 
   void _startMeshKeepAlive() {
@@ -48,6 +96,8 @@ class P2PConnectionService extends ChangeNotifier {
     Timer.periodic(const Duration(minutes: 1), (timer) async {
       try {
         int level = await Battery().batteryLevel;
+        selfNode.batteryLevel = level;
+
         if (level < 15) {
           // Extreme power save: stop everything if no active connections
           if (endpointMap.isEmpty) {
@@ -73,72 +123,86 @@ class P2PConnectionService extends ChangeNotifier {
     });
   }
 
-  Future<void> _retryPendingMessages() async {
-    try {
-      if (endpointMap.isEmpty) return;
-      final messages = await DatabaseService.getMessages();
-      final pending = messages.where((m) => m['isMe'] == 1 && m['status'] == 'pending').toList();
+  void _processMessageQueue() async {
+    if (_messageQueue.isEmpty) return;
 
-      for (var msg in pending) {
-        String receiverId = msg['receiver_id'];
-        if (receiverId == 'broadcast' || endpointMap.containsKey(receiverId)) {
-          _sendRaw(msg['id'], receiverId, msg['text'], msg['priority'], msg['message_id']);
-        }
-      }
-    } catch (e) {}
+    // Sort queue by priority
+    List<model.Message> sortedMessages = _messageQueue.toList();
+    sortedMessages.sort((a, b) => a.priority.index.compareTo(b.priority.index));
+    _messageQueue.clear();
+    _messageQueue.addAll(sortedMessages);
+
+    final message = _messageQueue.removeFirst();
+    await _sendRaw(message);
   }
 
   Future<void> sendMessage({
     required String text,
-    String priority = 'normal',
+    model.MessagePriority priority = model.MessagePriority.Chat,
     String receiverId = 'broadcast',
   }) async {
-    int id = await DatabaseService.insertMessage(
-      sender: 'Ben',
-      text: text,
-      isMe: true,
-      status: 'pending',
-      priority: priority,
+    final message = model.Message(
+      messageId: const Uuid().v4(),
+      senderId: selfNode.nodeId,
       receiverId: receiverId,
+      content: text,
+      priority: priority,
+      timestamp: DateTime.now(),
     );
-
-    _sendRaw(id, receiverId, text, priority, null);
+    _messageQueue.add(message);
   }
 
-  Future<void> _sendRaw(int dbId, String receiverId, String text, String priority, String? messageId) async {
-    String msgId = messageId ?? DateTime.now().microsecondsSinceEpoch.toString();
+  Future<void> _sendRaw(model.Message message) async {
+    var messageJson = message.toJson();
+    var hash = sha256.convert(utf8.encode(jsonEncode(messageJson))).toString();
+
     var payload = {
       'type': 'MSG',
-      'id': msgId,
-      'text': text,
-      'priority': priority,
+      'message': messageJson,
+      'hash': hash,
     };
 
-    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
+    _pendingMessages[message.messageId] = message;
 
+    Uint8List bytes = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
     bool success = false;
-    if (receiverId == 'broadcast') {
+
+    if (message.receiverId == 'broadcast') {
       for (String eid in endpointMap.keys) {
-        await Nearby().sendBytesPayload(eid, bytes);
+        if (eid != selfNodeId) {
+          await Nearby().sendBytesPayload(eid, bytes);
+        }
       }
-      success = true; // For broadcast we don't strictly wait for ACKs from all to mark as sent
-    } else if (endpointMap.containsKey(receiverId)) {
-      await Nearby().sendBytesPayload(receiverId, bytes);
-      // Wait for ACK
-      success = await _waitForAck(msgId);
+      success = true;
+    } else if (endpointMap.containsKey(message.receiverId)) {
+      await Nearby().sendBytesPayload(message.receiverId, bytes);
+      success = await _waitForAck(message.messageId);
     }
 
     if (success) {
-      await DatabaseService.updateMessageStatus(dbId, 'sent');
-      if (receiverId != 'broadcast' && receiverId != 'all') {
-        connectionQuality[receiverId] = (connectionQuality[receiverId] ?? 10) + 1;
-      }
-    } else {
-      await DatabaseService.incrementRetryCount(dbId);
-      if (receiverId != 'broadcast') {
-        connectionQuality[receiverId] = (connectionQuality[receiverId] ?? 10) - 2;
-      }
+      await DatabaseService.insertMessage(
+        sender: 'Ben',
+        text: message.content,
+        isMe: true,
+        status: 'sent',
+        priority: message.priority.toString().split('.').last,
+        receiverId: message.receiverId,
+        messageId: message.messageId,
+      );
     }
+  }
+
+  List<Node> _selectRelays(int maxRelays) {
+    if (endpointMap.isEmpty) return [];
+
+    var sortedNodes = endpointMap.values.toList();
+    sortedNodes.sort((a, b) {
+      int scoreA = a.batteryLevel + (connectionQuality[a.nodeId] ?? 0);
+      int scoreB = b.batteryLevel + (connectionQuality[b.nodeId] ?? 0);
+      return scoreB.compareTo(scoreA); // Descending order
+    });
+
+    return sortedNodes.take(maxRelays).toList();
   }
 
   Future<bool> _waitForAck(String msgId) async {
@@ -175,59 +239,101 @@ class P2PConnectionService extends ChangeNotifier {
       if (str.startsWith('{')) {
         var data = jsonDecode(str);
 
-        if (data['type'] == 'SYNC_CHECK') {
-          List<dynamic> peerIds = data['recentIds'] ?? [];
-          final myMessages = await DatabaseService.getMessages();
+        switch (data['type']) {
+          case 'PING':
+            sendProtocolMessage(id, {
+              'type': 'PONG',
+              'timestamp': data['timestamp'],
+            });
+            break;
+          case 'PONG':
+            final rtt = DateTime.now().millisecondsSinceEpoch - data['timestamp'];
+            _rttController.add(rtt as int);
+            break;
+          case 'HEARTBEAT':
+            if (endpointMap.containsKey(id)) {
+              endpointMap[id]!.batteryLevel = data['node']['batteryLevel'];
+              endpointMap[id]!.nodeRole = NodeRole.values[data['node']['nodeRole']];
+              endpointMap[id]!.lastSeen = DateTime.now();
+              notifyListeners();
+            }
+            break;
 
-          int oneHourAgo = DateTime.now().millisecondsSinceEpoch - (3600 * 1000);
-          var missingForPeer = myMessages.where((m) =>
-            m['timestamp'] > oneHourAgo &&
-            !peerIds.contains(m['message_id'])
-          ).toList();
+          case 'SYNC_CHECK':
+            List<dynamic> peerIds = data['recentIds'] ?? [];
+            final myMessages = await DatabaseService.getMessages();
 
-          for (var msg in missingForPeer) {
-            _sendRaw(msg['id'], id, msg['text'], msg['priority'], msg['message_id']);
-          }
-          return;
-        }
+            int oneHourAgo = DateTime.now().millisecondsSinceEpoch - (3600 * 1000);
+            var missingForPeer = myMessages.where((m) =>
+                m['timestamp'] > oneHourAgo && !peerIds.contains(m['message_id']))
+                .toList();
 
-        if (data['type'] == 'ACK') {
-          String ackId = data['id'];
-          if (_pendingAcks.containsKey(ackId)) {
-            _pendingAcks[ackId]!.complete(true);
-            _pendingAcks.remove(ackId);
-          }
-          return;
-        }
+            for (var msg in missingForPeer) {
+              final message = model.Message(
+                messageId: msg['message_id'],
+                senderId: selfNode.nodeId,
+                receiverId: id,
+                content: msg['text'],
+                priority: model.MessagePriority.values.firstWhere(
+                  (e) => e.toString().split('.').last == msg['priority'],
+                  orElse: () => model.MessagePriority.Chat,
+                ),
+                timestamp: DateTime.fromMillisecondsSinceEpoch(msg['timestamp']),
+              );
+              _sendRaw(message);
+            }
+            break;
 
-        if (data['type'] == 'MSG') {
-          // Send ACK
-          var ack = {'type': 'ACK', 'id': data['id']};
-          Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(jsonEncode(ack))));
+          case 'ACK':
+            String ackId = data['id'];
+            if (_pendingAcks.containsKey(ackId)) {
+              _pendingAcks[ackId]!.complete(true);
+              _pendingAcks.remove(ackId);
+            }
+            _pendingMessages.remove(ackId);
+            break;
 
-          // Check if already received (duplicate prevention)
-          final existing = await DatabaseService.getMessages();
-          if (existing.any((m) => m['message_id'] == data['id'])) return;
+          case 'VIDEO_FRAME':
+            _videoStreamController.add({'id': id, 'payload': payload.bytes});
+            break;
+          case 'VIDEO_SIG':
+            _videoSigController.add({'id': id, 'cmd': data['cmd']});
+            break;
+          case 'MSG':
+            var message = model.Message.fromJson(data['message']);
+            var ack = {'type': 'ACK', 'id': message.messageId};
+            Nearby().sendBytesPayload(id, Uint8List.fromList(utf8.encode(jsonEncode(ack))));
 
-          String sender = endpointMap[id]?.endpointName ?? 'Bilinmeyen';
-          await DatabaseService.insertMessage(
-            sender: sender,
-            text: data['text'],
-            isMe: false,
-            priority: data['priority'] ?? 'normal',
-            messageId: data['id'],
-          );
+            final existing = await DatabaseService.getMessages();
+            if (existing.any((m) => m['message_id'] == message.messageId)) return;
 
-          NotificationService.showNotification(
-            id: data['id'].hashCode,
-            title: 'Yeni Mesaj: $sender',
-            body: data['text'],
-          );
+            String sender = endpointMap[id]?.nodeId ?? 'Bilinmeyen';
+            await DatabaseService.insertMessage(
+              sender: sender,
+              text: message.content,
+              isMe: false,
+              priority: message.priority.toString().split('.').last,
+              messageId: message.messageId,
+            );
+
+            NotificationService.showNotification(
+              id: message.messageId.hashCode,
+              title: 'Yeni Mesaj: $sender',
+              body: message.content,
+            );
+            break;
         }
       }
     } catch (e) {
       debugPrint('Payload Handle Error: $e');
     }
+  }
+
+  void ping(String endpointId) {
+    sendProtocolMessage(endpointId, {
+      'type': 'PING',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+    });
   }
 
   Future<void> initMesh(String userName, Function(String, ConnectionInfo) onInit) async {
@@ -236,15 +342,22 @@ class P2PConnectionService extends ChangeNotifier {
     _currentUserName = userName;
     _onInitCallback = onInit;
 
-    // Load strategy from settings
+    var uuid = const Uuid();
+    _selfNode = Node(
+      nodeId: uuid.v4(),
+      username: userName,
+      lastSeen: DateTime.now(),
+      batteryLevel: await Battery().batteryLevel,
+    );
+
     final prefs = await SharedPreferences.getInstance();
     bool useBT = prefs.getBool('mesh_use_bluetooth') ?? true;
     bool useWifi = prefs.getBool('mesh_use_wifi') ?? true;
 
     if (useBT && !useWifi) {
-      strategy = Strategy.P2P_CLUSTER; // Bluetooth optimized
+      strategy = Strategy.P2P_CLUSTER;
     } else if (useWifi) {
-      strategy = Strategy.P2P_STAR; // Wi-Fi optimized
+      strategy = Strategy.P2P_STAR;
     } else {
       strategy = Strategy.P2P_CLUSTER;
     }
@@ -269,7 +382,7 @@ class P2PConnectionService extends ChangeNotifier {
         serviceId: _serviceId,
         onConnectionInitiated: (id, info) {
           debugPrint('Connection Initiated: $id');
-          endpointMap[id] = info;
+          endpointMap[id] = Node(nodeId: info.endpointName, username: info.endpointName, lastSeen: DateTime.now());
           notifyListeners();
           onInit(id, info);
         },
@@ -277,6 +390,7 @@ class P2PConnectionService extends ChangeNotifier {
           debugPrint('Connection Result for $id: $status');
           if (status == Status.CONNECTED) {
             _syncWithPeer(id);
+            _sendHeartbeat();
           } else {
             endpointMap.remove(id);
           }
@@ -310,7 +424,7 @@ class P2PConnectionService extends ChangeNotifier {
             id,
             onConnectionInitiated: (id, info) {
               debugPrint('Connection Initiated: $id');
-              endpointMap[id] = info;
+              endpointMap[id] = Node(nodeId: info.endpointName, username: info.endpointName, lastSeen: DateTime.now());
               notifyListeners();
               onInit(id, info);
             },
@@ -318,6 +432,7 @@ class P2PConnectionService extends ChangeNotifier {
               debugPrint('Connection Result for $id: $status');
               if (status == Status.CONNECTED) {
                 _syncWithPeer(id);
+                 _sendHeartbeat();
               } else {
                 endpointMap.remove(id);
               }

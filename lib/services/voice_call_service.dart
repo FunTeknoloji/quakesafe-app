@@ -20,10 +20,11 @@ class VoiceCallService {
   final PlayerStream _player = PlayerStream();
 
   StreamSubscription? _recorderSubscription;
-  bool _isCallActive = false;
+  final ValueNotifier<bool> isCallActiveNotifier = ValueNotifier<bool>(false);
   bool _isMuted = false;
   bool _isRemoteMuted = false;
   bool _isSpeakerPhone = true;
+  Set<String> mutedUsers = {};
 
   bool _isRecording = false;
   File? _recordFile;
@@ -37,9 +38,13 @@ class VoiceCallService {
     _isRemoteMuted = mute;
     if (mute) {
       _player.stop();
-    } else if (_isCallActive) {
+    } else if (isCallActiveNotifier.value) {
       _player.start();
     }
+  }
+
+  void setMutedUsers(Set<String> users) {
+    mutedUsers = users;
   }
 
   Future<void> toggleSpeaker(bool speakerOn) async {
@@ -87,8 +92,8 @@ class VoiceCallService {
   Timer? _pttTimer;
 
   void startCall(String endpointId) {
-    if (_isCallActive) return;
-    _isCallActive = true;
+    if (isCallActiveNotifier.value) return;
+    isCallActiveNotifier.value = true;
 
     _player.start();
   }
@@ -144,15 +149,15 @@ class VoiceCallService {
     _recorderSubscription = null;
   }
 
-  void receiveAudio(Uint8List data) {
-    if (!_isCallActive) {
-      _isCallActive = true;
+  void receiveAudio(String endpointId, Uint8List data) {
+    if (!isCallActiveNotifier.value) {
+      isCallActiveNotifier.value = true;
       _player.start();
     }
 
     if (_isRecording) _recordSink?.add(data);
 
-    if (!_isRemoteMuted) {
+    if (!_isRemoteMuted && !mutedUsers.contains(endpointId)) {
       _player.writeChunk(data);
     }
   }
@@ -218,7 +223,7 @@ class VoiceCallService {
   bool get isRecording => _isRecording;
 
   void stopCall() {
-    _isCallActive = false;
+    isCallActiveNotifier.value = false;
     _recorder.stop();
     _player.stop();
     _recorderSubscription?.cancel();
