@@ -18,16 +18,21 @@ void main() async {
       debugPrint('Notification Service Init Error: $e');
     }
 
-    runApp(const QuakeSafeApp());
+    runApp(const MyApp());
   }, (error, stack) {
     debugPrint('Critical startup error: $error');
     debugPrint(stack.toString());
   });
 }
 
-class QuakeSafeApp extends StatelessWidget {
-  const QuakeSafeApp({super.key});
+class MyApp extends StatefulWidget {
+  const MyApp({super.key});
 
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(

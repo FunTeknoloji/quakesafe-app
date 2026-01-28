@@ -21,7 +21,7 @@ class ToolsBottomSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Araçlar',
+            'Tools',
             style: TextStyle(
               color: Colors.white,
               fontSize: 24,
@@ -36,28 +36,28 @@ class ToolsBottomSheet extends StatelessWidget {
             crossAxisSpacing: 16,
             mainAxisSpacing: 16,
             children: [
-              _buildToolItem(Icons.flashlight_on, 'Fener', () {
+              _buildToolItem(Icons.flashlight_on, 'Flashlight', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
               }),
-              _buildToolItem(Icons.volume_up, 'Düdük', () {
+              _buildToolItem(Icons.volume_up, 'Whistle', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
               }),
-              _buildToolItem(Icons.map, 'Harita', () {
+              _buildToolItem(Icons.map, 'Map', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
               }),
-              _buildToolItem(Icons.message, 'Hızlı Mesaj', () {
+              _buildToolItem(Icons.message, 'Quick Message', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const ToolsScreen()));
               }),
-              _buildToolItem(Icons.note_alt, 'Not Defteri', () {
+              _buildToolItem(Icons.note_alt, 'Notepad', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const NotepadScreen()));
               }),
-              _buildToolItem(Icons.timer, 'Kronometre', () {
+              _buildToolItem(Icons.timer, 'Stopwatch', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const TimerScreen()));
               }),
-              _buildToolItem(Icons.calendar_today, 'Takvim', () {
+              _buildToolItem(Icons.calendar_today, 'Calendar', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const CalendarScreen()));
               }),
-              _buildToolItem(Icons.settings, 'Ayarlar', () {
+              _buildToolItem(Icons.settings, 'Settings', () {
                 Navigator.push(context, MaterialPageRoute(builder: (context) => const MeshSettingsScreen()));
               }),
             ],

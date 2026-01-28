@@ -39,6 +39,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     WakelockPlus.enable();
     _p2pService.addListener(_onP2PChange);
     widget.voiceCallService.isTransmitting.addListener(_onTransmissionChanged);
+    widget.voiceCallService.isCallActiveNotifier.addListener(_onCallStateChanged);
     widget.voiceCallService.startCall(widget.endpointId);
     _rttSubscription = _p2pService.rttStream.listen((rtt) {
       if (mounted) {
@@ -55,9 +56,16 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
     WakelockPlus.disable();
     _p2pService.removeListener(_onP2PChange);
     widget.voiceCallService.isTransmitting.removeListener(_onTransmissionChanged);
+    widget.voiceCallService.isCallActiveNotifier.removeListener(_onCallStateChanged);
     widget.voiceCallService.stopCall();
     _rttSubscription?.cancel();
     super.dispose();
+  }
+
+  void _onCallStateChanged() {
+    if (!widget.voiceCallService.isCallActiveNotifier.value) {
+      _endCall();
+    }
   }
 
   void _onTransmissionChanged() {
@@ -318,7 +326,7 @@ class _VoiceCallScreenState extends State<VoiceCallScreen> {
               icon: Icons.call_end_rounded,
               color: Colors.red.withOpacity(0.8),
               label: 'KAPAT',
-              onTap: () => _endCall(),
+              onTap: () => _endCall(showToast: true),
             ),
             _buildRoundButton(
               icon: _isRecording ? Icons.stop_circle_rounded : Icons.fiber_manual_record_rounded,

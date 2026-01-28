@@ -22,10 +22,8 @@ import '../services/notification_service.dart';
 import '../services/profile_service.dart';
 import '../services/voice_call_service.dart';
 import '../services/p2p_connection_service.dart';
-import '../services/video_call_service.dart';
 import 'voice_call_screen.dart';
 import 'incoming_call_screen.dart';
-import 'video_call_screen.dart';
 
 class ChatScreen extends StatefulWidget {
   const ChatScreen({super.key});
@@ -40,7 +38,6 @@ class _ChatScreenState extends State<ChatScreen> {
   List<ChatMessage> messages = [];
   final TextEditingController _textController = TextEditingController();
   final VoiceCallService _voiceCallService = VoiceCallService();
-  VideoCallService? _videoCallService;
   final P2PConnectionService _p2p = P2PConnectionService();
   final FlutterTts _tts = FlutterTts();
   final stt.SpeechToText _speech = stt.SpeechToText();
@@ -149,10 +146,6 @@ class _ChatScreenState extends State<ChatScreen> {
                 _handleVoiceSignaling(id, data['cmd']);
                 return;
               }
-              if (data['type'] == 'VIDEO_SIG') {
-                _handleVideoSignaling(id, data['cmd']);
-                return;
-              }
               // Pass to reliable service
               _p2p.handleIncomingPayload(id, payload);
               return;
@@ -188,27 +181,6 @@ class _ChatScreenState extends State<ChatScreen> {
     }
   }
 
-  void _handleVideoSignaling(String id, String cmd) {
-    if (cmd == 'START') {
-      String caller = _p2p.endpointMap[id]?.nodeId ?? 'Bilinmeyen';
-      _showIncomingVideoCallUI(id);
-    }
-  }
-
-  void _showIncomingVideoCallUI(String id) {
-    Navigator.push(context, MaterialPageRoute(builder: (context) => IncomingCallScreen(
-      callerName: _p2p.endpointMap[id]?.nodeId ?? 'Bilinmeyen',
-      onAccept: () {
-        Navigator.pop(context);
-        _p2p.sendProtocolMessage(id, {'type': 'VIDEO_SIG', 'cmd': 'ACCEPT'});
-        _initiateVideoCall(id);
-      },
-      onReject: () {
-        Navigator.pop(context);
-        _p2p.sendProtocolMessage(id, {'type': 'VIDEO_SIG', 'cmd': 'REJECT'});
-      },
-    )));
-  }
 
   void _showIncomingCallUI(String id) {
     Navigator.push(context, MaterialPageRoute(builder: (context) => IncomingCallScreen(
@@ -482,60 +454,7 @@ class _ChatScreenState extends State<ChatScreen> {
             icon: Icon(_isCalling ? Icons.call_end : Icons.call, color: _isCalling ? Colors.redAccent : Colors.greenAccent),
             onPressed: _toggleVoiceCall,
           ),
-          IconButton(
-            icon: const Icon(Icons.videocam, color: Colors.greenAccent),
-            onPressed: _startVideoCall,
-          ),
         ],
-      ),
-    );
-  }
-
-  void _startVideoCall() {
-    if (_p2p.endpointMap.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Bağlı cihaz yok')));
-      return;
-    }
-    _p2p.sendProtocolMessage('all', {'type': 'VIDEO_SIG', 'cmd': 'START'});
-    _initiateVideoCall('all');
-  }
-
-  void _showVideoCallDevicePicker() {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: const Color(0xFF1A1A1A),
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(24))),
-      builder: (context) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Padding(
-            padding: EdgeInsets.all(20),
-            child: Text('GÖRÜNTÜLÜ ARANACAK CİHAZI SEÇİN', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-          ),
-          ..._p2p.endpointMap.entries.map((e) => ListTile(
-            leading: const Icon(Icons.videocam, color: Colors.greenAccent),
-            title: Text(e.value.username, style: const TextStyle(color: Colors.white)),
-            onTap: () {
-              Navigator.pop(context);
-              _initiateVideoCall(e.key);
-            },
-          )),
-          const SizedBox(height: 20),
-        ],
-      ),
-    );
-  }
-
-  void _initiateVideoCall(String targetId) {
-    _videoCallService = VideoCallService(targetId);
-    _videoCallService!.sendSignal('START');
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => VideoCallScreen(
-          endpointId: targetId,
-          endpointName: _p2p.endpointMap[targetId]?.nodeId ?? 'Bilinmeyen',
-        ),
       ),
     );
   }

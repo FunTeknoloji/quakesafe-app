@@ -35,6 +35,7 @@ class P2PConnectionService extends ChangeNotifier {
   Function(String, ConnectionInfo)? _onInitCallback;
 
   final Map<String, Completer<bool>> _pendingAcks = {};
+  final Map<String, model.Message> _pendingMessages = {};
   final Queue<model.Message> _messageQueue = Queue<model.Message>();
   final StreamController<Map<String, dynamic>> _videoStreamController = StreamController.broadcast();
 
@@ -55,6 +56,15 @@ class P2PConnectionService extends ChangeNotifier {
     _startBatteryOptimization();
     _startMeshKeepAlive();
     _startHeartbeat();
+    _startMessageResendTimer();
+  }
+
+  void _startMessageResendTimer() {
+    Timer.periodic(const Duration(seconds: 10), (timer) {
+      for (var message in _pendingMessages.values) {
+        _sendRaw(message);
+      }
+    });
   }
 
   void _startHeartbeat() {
@@ -152,18 +162,15 @@ class P2PConnectionService extends ChangeNotifier {
       'hash': hash,
     };
 
+    _pendingMessages[message.messageId] = message;
+
     Uint8List bytes = Uint8List.fromList(utf8.encode(jsonEncode(payload)));
     bool success = false;
 
     if (message.receiverId == 'broadcast') {
-      final relays = _selectRelays(2);
-      if (relays.isEmpty && endpointMap.isNotEmpty) {
-        for (String eid in endpointMap.keys) {
+      for (String eid in endpointMap.keys) {
+        if (eid != selfNodeId) {
           await Nearby().sendBytesPayload(eid, bytes);
-        }
-      } else {
-        for (var node in relays) {
-          await Nearby().sendBytesPayload(node.nodeId, bytes);
         }
       }
       success = true;
@@ -283,6 +290,7 @@ class P2PConnectionService extends ChangeNotifier {
               _pendingAcks[ackId]!.complete(true);
               _pendingAcks.remove(ackId);
             }
+            _pendingMessages.remove(ackId);
             break;
 
           case 'VIDEO_FRAME':

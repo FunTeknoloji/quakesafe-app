@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_contacts/flutter_contacts.dart';
 import '../services/profile_service.dart';
 import 'recordings_screen.dart';
+import 'settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -70,76 +71,70 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Profil', style: TextStyle(color: Colors.white, fontSize: 32, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 24),
-              Center(
-                child: Column(
-                  children: [
-                    Stack(
-                      children: [
-                        CircleAvatar(
-                          radius: 60,
-                          backgroundImage: _photoPath != null ? FileImage(File(_photoPath!)) : null,
-                          child: _photoPath == null ? const Icon(Icons.person, size: 60) : null,
-                        ),
-                        Positioned(
-                          bottom: 0,
-                          right: 0,
-                          child: IconButton(
-                            icon: const Icon(Icons.camera_alt, color: Colors.white),
-                            onPressed: _pickImage,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _nameController,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.bold),
-                      decoration: const InputDecoration.collapsed(
-                        hintText: 'Adınız',
-                        hintStyle: TextStyle(color: Colors.grey),
-                      ),
-                      onChanged: (value) => _saveProfile(showInfo: false),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 32),
-              _buildProfileOption(
-                context,
-                icon: Icons.emergency,
-                title: 'Acil Durum Kişisi',
-                subtitle: _emergencyContactName ?? 'Seçilmedi',
-                onTap: _pickEmergencyContact,
-              ),
-              _buildProfileOption(
-                context,
-                icon: Icons.message,
-                title: 'Acil Durum Mesajı',
-                onTap: () {
-                  // Show dialog to edit SOS message
-                },
-              ),
-              _buildProfileOption(
-                context,
-                icon: Icons.mic,
-                title: 'Ses Kayıtları',
-                onTap: () {
-                  Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
-                },
+      body: CustomScrollView(
+        slivers: [
+          SliverAppBar(
+            expandedHeight: 250.0,
+            backgroundColor: Colors.black,
+            pinned: true,
+            flexibleSpace: FlexibleSpaceBar(
+              title: Text(_nameController.text, style: const TextStyle(color: Colors.white)),
+              background: _photoPath != null
+                  ? Image.file(File(_photoPath!), fit: BoxFit.cover)
+                  : Container(color: Colors.grey[800]),
+            ),
+            actions: [
+              IconButton(
+                icon: const Icon(Icons.edit),
+                onPressed: _pickImage,
               ),
             ],
           ),
-        ),
+          SliverList(
+            delegate: SliverChildListDelegate([
+              Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('Adınız', style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: _nameController,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      decoration: const InputDecoration(
+                        hintText: 'Adınız',
+                        hintStyle: TextStyle(color: Colors.grey),
+                        border: InputBorder.none,
+                      ),
+                      onChanged: (value) => _saveProfile(showInfo: false),
+                    ),
+                    const SizedBox(height: 16),
+                    _buildInfoTile('Acil Durum Kişisi', _emergencyContactName ?? 'Seçilmedi'),
+                    _buildInfoTile('Acil Durum Mesajı', _sosMessageController.text),
+                    const SizedBox(height: 16),
+                    _buildActions(),
+                  ],
+                ),
+              ),
+            ]),
+          ),
+        ],
       ),
+    );
+  }
+
+  Widget _buildActions() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        _buildActionButton('Ayarlar', Icons.settings, () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => SettingsScreen()));
+        }),
+        _buildActionButton('Ses Kayıtları', Icons.mic, () {
+          Navigator.push(context, MaterialPageRoute(builder: (context) => const RecordingsScreen()));
+        }),
+      ],
     );
   }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:quakesafe_app/models/message.dart' as model;
 import 'package:quakesafe_app/services/p2p_connection_service.dart';
+import 'package:battery_plus/battery_plus.dart';
 import 'tools_bottom_sheet.dart';
 import 'chat_screen.dart';
 import 'disaster_guide_screen.dart';
@@ -41,19 +42,19 @@ class _HomeScreenState extends State<HomeScreen> {
         items: const <BottomNavigationBarItem>[
           BottomNavigationBarItem(
             icon: Icon(Icons.home_filled),
-            label: 'Ana Sayfa',
+            label: 'Home',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.chat_bubble_outline),
-            label: 'Sohbet',
+            label: 'Chat',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.book_outlined),
-            label: 'Rehber',
+            label: 'Guide',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.person_outline),
-            label: 'Profil',
+            label: 'Profile',
           ),
         ],
         currentIndex: _selectedIndex,
@@ -68,8 +69,36 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 }
 
-class MainContent extends StatelessWidget {
+class MainContent extends StatefulWidget {
   const MainContent({super.key});
+
+  @override
+  State<MainContent> createState() => _MainContentState();
+}
+
+class _MainContentState extends State<MainContent> {
+  final Battery _battery = Battery();
+  int _batteryLevel = 100;
+  BatteryState _batteryState = BatteryState.full;
+
+  @override
+  void initState() {
+    super.initState();
+    _battery.batteryLevel.then((level) {
+      setState(() {
+        _batteryLevel = level;
+      });
+    });
+
+    _battery.onBatteryStateChanged.listen((BatteryState state) {
+      _battery.batteryLevel.then((level) {
+        setState(() {
+          _batteryLevel = level;
+          _batteryState = state;
+        });
+      });
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -93,36 +122,47 @@ class MainContent extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          Row(
             children: [
-              Text(
-                'GÜVENDE KAL',
-                style: TextStyle(
-                  color: Colors.grey[400],
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                ),
+              IconButton(
+                icon: const Icon(Icons.refresh_rounded, color: Colors.blueAccent, size: 20),
+                onPressed: () {
+                  P2PConnectionService().initMesh('Kullanıcı', (id, info) {});
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Ağ yenileniyor...')));
+                },
               ),
-              const Text(
-                'Acil Durum Ağı',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
+              const SizedBox(width: 8),
+              ListenableBuilder(
+                listenable: P2PConnectionService(),
+                builder: (context, _) {
+                  return Text(
+                    '${P2PConnectionService().endpointMap.length} Cihaz Aktif',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  );
+                },
               ),
             ],
           ),
           Row(
             children: [
-              IconButton(
-                icon: const Icon(Icons.battery_charging_full, color: Colors.green),
-                onPressed: () {},
+              Icon(
+                _batteryState == BatteryState.charging
+                    ? Icons.battery_charging_full
+                    : Icons.battery_full,
+                color: _batteryLevel > 20 ? Colors.green : Colors.red,
               ),
-              IconButton(
-                icon: const Icon(Icons.network_check, color: Colors.blue),
-                onPressed: () {},
+              const SizedBox(width: 8),
+              Text(
+                '$_batteryLevel%',
+                style: TextStyle(
+                  color: _batteryLevel > 20 ? Colors.green : Colors.red,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ],
           ),
@@ -135,7 +175,7 @@ class MainContent extends StatelessWidget {
     return Column(
       children: [
         Text(
-          'GÜVENDE MİSİN?',
+          'SAFE',
           style: TextStyle(
             color: Colors.grey[400],
             fontSize: 16,
@@ -151,7 +191,7 @@ class MainContent extends StatelessWidget {
             );
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
-                content: Text('SOS mesajı gönderildi!'),
+                content: Text('SOS'),
               ),
             );
           },
@@ -185,7 +225,7 @@ class MainContent extends StatelessWidget {
         ),
         const SizedBox(height: 20),
         Text(
-          'ACİL DURUMDA BASILI TUT',
+          'HOLD FOR SOS',
           style: TextStyle(
             color: Colors.grey[400],
             fontSize: 14,

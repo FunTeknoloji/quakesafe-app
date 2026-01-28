@@ -20,7 +20,7 @@ class VoiceCallService {
   final PlayerStream _player = PlayerStream();
 
   StreamSubscription? _recorderSubscription;
-  bool _isCallActive = false;
+  final ValueNotifier<bool> isCallActiveNotifier = ValueNotifier<bool>(false);
   bool _isMuted = false;
   bool _isRemoteMuted = false;
   bool _isSpeakerPhone = true;
@@ -38,7 +38,7 @@ class VoiceCallService {
     _isRemoteMuted = mute;
     if (mute) {
       _player.stop();
-    } else if (_isCallActive) {
+    } else if (isCallActiveNotifier.value) {
       _player.start();
     }
   }
@@ -92,8 +92,8 @@ class VoiceCallService {
   Timer? _pttTimer;
 
   void startCall(String endpointId) {
-    if (_isCallActive) return;
-    _isCallActive = true;
+    if (isCallActiveNotifier.value) return;
+    isCallActiveNotifier.value = true;
 
     _player.start();
   }
@@ -150,8 +150,8 @@ class VoiceCallService {
   }
 
   void receiveAudio(String endpointId, Uint8List data) {
-    if (!_isCallActive) {
-      _isCallActive = true;
+    if (!isCallActiveNotifier.value) {
+      isCallActiveNotifier.value = true;
       _player.start();
     }
 
@@ -223,7 +223,7 @@ class VoiceCallService {
   bool get isRecording => _isRecording;
 
   void stopCall() {
-    _isCallActive = false;
+    isCallActiveNotifier.value = false;
     _recorder.stop();
     _player.stop();
     _recorderSubscription?.cancel();
